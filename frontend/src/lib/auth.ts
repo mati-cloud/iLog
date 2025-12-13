@@ -1,3 +1,4 @@
+import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { jwt } from "better-auth/plugins";
 import { Pool } from "pg";

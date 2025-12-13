@@ -1,4 +1,3 @@
-
 import { detectLogSourceType } from "@/lib/log-utils";
 import type { RawLogData } from "@/types/log";
 import { DockerLogRow } from "./DockerLogRow";

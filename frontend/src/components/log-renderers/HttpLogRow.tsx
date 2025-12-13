@@ -1,4 +1,3 @@
-
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,7 +45,8 @@ export function HttpLogRow({
   };
 
   const copyCurl = () => {
-    const host = log.log_attributes?.["http.host"] || "localhost:3000";
+    const host =
+      (log.log_attributes?.["http.host"] as string) || "localhost:3000";
     const curl = generateCurlCommand(httpData, undefined, host);
     navigator.clipboard.writeText(curl);
   };
@@ -104,7 +104,8 @@ export function HttpLogRow({
                   {generateCurlCommand(
                     httpData,
                     undefined,
-                    log.log_attributes?.["http.host"] || "localhost:3000",
+                    (log.log_attributes?.["http.host"] as string) ||
+                      "localhost:3000",
                   )}
                 </pre>
               </div>

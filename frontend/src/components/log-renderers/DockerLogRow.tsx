@@ -1,4 +1,3 @@
-
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -40,10 +39,10 @@ export function DockerLogRow({
         onClick={onToggleExpand}
       >
         <TableCell className="font-mono text-xs text-muted-foreground">
-          {new Date(log.time).toLocaleTimeString()}
+          {log.time ? new Date(log.time).toLocaleTimeString() : "-"}
         </TableCell>
         <TableCell>
-          <Badge variant={getLevelBadgeVariant(log.severity_text)}>
+          <Badge variant={getLevelBadgeVariant(log.severity_text || "INFO")}>
             {log.severity_text || "INFO"}
           </Badge>
         </TableCell>

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import LogsTable from "@/components/LogsTable";
 import { auth } from "@/lib/auth";

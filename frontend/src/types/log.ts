@@ -1,3 +1,4 @@
+import type { LogAttributes } from "@/lib/log-utils";
 
 export type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
 
