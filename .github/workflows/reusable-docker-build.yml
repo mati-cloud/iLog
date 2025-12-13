@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: k8s-runners
     steps:
       - name: Checkout
         uses: actions/checkout@v4
