@@ -58,12 +58,12 @@ fn default_flush_interval() -> u64 {
 }
 
 impl AgentConfig {
-    pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
-        let config = Config::builder()
+    pub fn load(path: &PathBuf) -> Result<Self, config::ConfigError> {
+        let config = config::Config::builder()
             .set_default("agent.batch_size", 100)?
             .set_default("agent.flush_interval_secs", 5)?
-            .add_source(File::from(path.clone()))
-            .add_source(Environment::with_prefix("ILOG_AGENT").separator("_"))
+            .add_source(config::File::from(path.clone()))
+            .add_source(config::Environment::with_prefix("ILOG_AGENT").separator("_"))
             .build()?;
 
         config.try_deserialize()

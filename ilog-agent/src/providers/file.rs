@@ -1,7 +1,7 @@
 use tokio::sync::mpsc;
 use anyhow::{Result, Context};
 use std::sync::Arc;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader};
 use tracing::{info, error, warn};
@@ -117,7 +117,7 @@ impl FileProvider {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl LogProvider for FileProvider {
     async fn start(&self, tx: mpsc::Sender<LogEntry>) -> Result<()> {
         let file_config = match &self.config.sources.file {
@@ -134,8 +134,7 @@ impl LogProvider for FileProvider {
         let mut discovered_files = vec![];
         
         for path_pattern in &file_config.paths {
-            // First check if it's a directory
-            let path = Path::new(path_pattern);
+            let path = std::path::Path::new(path_pattern.as_str());
             if path.is_dir() {
                 // Recursively find all .log files in directory
                 info!("Discovering *.log files in directory: {}", path.display());

@@ -34,7 +34,7 @@ impl LogSender {
     pub async fn start(
         config: Arc<AgentConfig>,
         mut rx: mpsc::Receiver<LogEntry>,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         let mut sender = Self::new(config.clone());
         let flush_interval = tokio::time::Duration::from_secs(config.agent.flush_interval_secs);
         let mut interval = tokio::time::interval(flush_interval);
@@ -60,7 +60,7 @@ impl LogSender {
         }
     }
 
-    async fn flush(&mut self) -> Result<()> {
+    async fn flush(&mut self) -> anyhow::Result<()> {
         if self.buffer.is_empty() {
             return Ok(());
         }

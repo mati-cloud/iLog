@@ -1,3 +1,4 @@
+"use client";
 
 import { Mail, Plus, Shield, Users as UsersIcon } from "lucide-react";
 import { useRouter } from "next/navigation";

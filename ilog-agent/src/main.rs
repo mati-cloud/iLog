@@ -1,3 +1,4 @@
+mod config;
 mod sender;
 mod providers;
 

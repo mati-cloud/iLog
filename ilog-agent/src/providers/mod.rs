@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::sender::LogEntry;
 
 /// Provider trait - each log source implements this
-#[async_trait]
+#[async_trait::async_trait]
 pub trait LogProvider: Send + Sync {
     /// Start collecting logs and send them through the channel
     async fn start(&self, tx: mpsc::Sender<LogEntry>) -> Result<()>;

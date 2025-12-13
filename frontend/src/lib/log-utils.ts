@@ -1,3 +1,4 @@
+export type LogSourceType = "http" | "file" | "docker" | "journald" | "unknown";
 
 export type LogAttributes = Record<string, unknown>;
 

@@ -1,3 +1,4 @@
+"use client";
 
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";

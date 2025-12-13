@@ -1,3 +1,4 @@
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing::info;
 
 pub struct Database {
