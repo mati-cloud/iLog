@@ -1,0 +1,56 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.0-pg17
+    container_name: ilog-timescaledb
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ilog_user} -d ${POSTGRES_DB:-ilog}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ilog-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ilog-backend
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - ilog-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ilog-frontend
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - ilog-network
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
+    driver: local
+
+networks:
+  ilog-network:
+    driver: bridge

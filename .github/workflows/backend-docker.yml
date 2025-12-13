@@ -1,0 +1,27 @@
+name: Build Backend Docker Image
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-docker.yml"
+  pull_request:
+    types: [opened, reopened]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-docker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-name: ilog-backend
+      context: ./backend
+      dockerfile: ./backend/Dockerfile
+      platforms: linux/amd64,linux/arm64

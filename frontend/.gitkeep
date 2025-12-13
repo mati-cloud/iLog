@@ -1,0 +1,2 @@
+# This folder is for your Next.js frontend
+# Run: npx create-next-app@latest . --typescript --tailwind --app --no-src-dir

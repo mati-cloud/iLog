@@ -1,0 +1,40 @@
+# iLog Agent Configuration Example
+
+[agent]
+# iLog server address (domain or IP)
+server = "ilog.company.com:8080"
+
+# Project token (get from iLog UI)
+token = "proj_abc123_xyz789"
+
+# Batch size (number of logs before sending)
+batch_size = 100
+
+# Flush interval in seconds
+flush_interval_secs = 5
+
+# File log sources
+[sources.file]
+enabled = true
+paths = [
+    "/var/log/nginx/*.log",
+    "/var/log/myapp/*.log",
+    "/var/www/app/storage/logs/*.log"
+]
+
+# Journald (systemd) sources
+[sources.journald]
+enabled = true
+units = [
+    "nginx.service",
+    "php8.2-fpm.service",
+    "postgresql.service"
+]
+
+# Docker container sources
+[sources.docker]
+enabled = false
+containers = [
+    "myapp",
+    "redis"
+]

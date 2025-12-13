@@ -1,0 +1,61 @@
+name: Build Agent Binaries
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "ilog-agent/**"
+      - ".github/workflows/agent-binaries.yml"
+  pull_request:
+    types: [opened, reopened]
+    paths:
+      - "ilog-agent/**"
+      - ".github/workflows/agent-binaries.yml"
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build binary
+        uses: rust-build/rust-build.action@v1.4.5
+        with:
+          RUSTTARGET: ${{ matrix.target }}
+          ARCHIVE_TYPES: tar.gz
+          ARCHIVE_NAME: ilog-agent-${{ matrix.target }}
+          SRC_DIR: ilog-agent
+          UPLOAD_MODE: none
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ilog-agent-${{ matrix.target }}
+          path: |
+            output/ilog-agent-${{ matrix.target }}.tar.gz
+
+  release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
