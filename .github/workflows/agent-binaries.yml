@@ -64,7 +64,66 @@ jobs:
           name: ilog-agent-${{ matrix.target }}
           path: output/ilog-agent-${{ matrix.target }}.tar.gz
 
-  release:
+  auto-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: k8s-runners
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' ilog-agent/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: v${VERSION}"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## iLog Agent Binaries
+            
+            Automated release of iLog agent binaries.
+            
+            ### Downloads
+            - `ilog-agent-x86_64-unknown-linux-musl.tar.gz` - AMD64/x86_64 Linux binary
+            - `ilog-agent-aarch64-unknown-linux-musl.tar.gz` - ARM64/aarch64 Linux binary
+            
+            ### Installation
+            ```bash
+            # Download and extract
+            tar -xzf ilog-agent-*.tar.gz
+            
+            # Move to PATH
+            sudo mv ilog-agent-* /usr/local/bin/ilog-agent
+            sudo chmod +x /usr/local/bin/ilog-agent
+            ```
+          files: artifacts/**/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  manual-release:
     if: github.event_name == 'release'
     needs: build
     runs-on: k8s-runners
