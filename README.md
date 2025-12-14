@@ -2,9 +2,9 @@
 
 A centralized logging software solution for collecting, processing, and visualizing logs.
 
-## Environment Variables
+## Environment Variables (`.env.dist`)
 
-### Frontend (.env.local)
+### Frontend
 
 ```bash
 # Backend API URL
@@ -42,8 +42,14 @@ docker pull ghcr.io/mati-cloud/ilog-frontend:latest
 docker pull ghcr.io/mati-cloud/ilog-backend:latest
 ```
 
+## Agent Binaries
+
+Public pre-built - for both ARM64 and AMD64 (x86_64) architectures - are available under:
+- https://github.com/mati-cloud/ilog/releases
+
+
 ## Quick Start
 
-1. Copy `.env.example` to `.env.local` in the frontend directory
+1. Copy `.env.dist` to `.env` in the frontend directory
 2. Update environment variables with your production values
 3. Deploy using Docker Compose or Kubernetes
