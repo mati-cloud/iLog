@@ -1,3 +1,49 @@
 # @mati.cloud/ilog
 
 A centralized logging software solution for collecting, processing, and visualizing logs.
+
+## Environment Variables
+
+### Frontend (.env.local)
+
+```bash
+# Backend API URL
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+
+# WebSocket URL for real-time logs
+NEXT_PUBLIC_WS_URL=wss://api.yourdomain.com
+
+# Database connection
+DATABASE_URL=postgresql://user:password@host:5432/ilog
+
+# Authentication (minimum 32 characters)
+BETTER_AUTH_SECRET=your-secure-random-string-min-32-chars
+BETTER_AUTH_URL=https://yourdomain.com
+
+# Log ingestion endpoint
+NEXT_PUBLIC_ILOG_ENDPOINT=https://api.yourdomain.com/v1/logs
+ILOG_HTTP_TOKEN=proj_xxx_yyy
+NEXT_PUBLIC_SERVICE_NAME=ilog-frontend
+```
+
+### Backend
+
+See backend configuration for database and service settings.
+
+## Docker Images
+
+Public Docker images are available on GitHub Container Registry:
+
+```bash
+# Pull frontend image
+docker pull ghcr.io/mati-cloud/ilog-frontend:latest
+
+# Pull backend image
+docker pull ghcr.io/mati-cloud/ilog-backend:latest
+```
+
+## Quick Start
+
+1. Copy `.env.example` to `.env.local` in the frontend directory
+2. Update environment variables with your production values
+3. Deploy using Docker Compose or Kubernetes
