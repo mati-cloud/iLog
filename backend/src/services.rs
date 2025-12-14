@@ -255,7 +255,7 @@ pub async fn create_agent(
 
     let agent: Agent = sqlx::query_as(
         r#"
-        INSERT INTO user_tokens (service_id, name, token, source_type, expires_at)
+        INSERT INTO agents (service_id, name, token, source_type, expires_at)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id, service_id, name, token, source_type, expires_at, last_used_at, created_at
         "#,
@@ -296,8 +296,8 @@ pub async fn list_agents(
     let agents: Vec<Agent> = sqlx::query_as(
         r#"
         SELECT id, service_id, name, token, source_type, expires_at, last_used_at, created_at
-        FROM user_tokens
-        WHERE service_id = $1 AND revoked_at IS NULL
+        FROM agents
+        WHERE service_id = $1
         ORDER BY created_at DESC
         "#,
     )
@@ -331,7 +331,7 @@ pub async fn revoke_agent(
     }
 
     let _result = sqlx::query(
-        "UPDATE user_tokens SET revoked_at = NOW() WHERE id = $1 AND service_id = $2",
+        "DELETE FROM agents WHERE id = $1 AND service_id = $2",
     )
     .bind(agent_id)
     .bind(service_id)
@@ -349,9 +349,8 @@ pub async fn validate_agent_token(
     let result: Agent = sqlx::query_as(
         r#"
         SELECT id, service_id, name, token, source_type, expires_at, last_used_at, created_at
-        FROM user_tokens
+        FROM agents
         WHERE token = $1
-          AND revoked_at IS NULL
           AND (expires_at IS NULL OR expires_at > NOW())
         "#,
     )
@@ -361,7 +360,7 @@ pub async fn validate_agent_token(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let _ = sqlx::query("UPDATE user_tokens SET last_used_at = NOW() WHERE id = $1")
+    let _ = sqlx::query("UPDATE agents SET last_used_at = NOW() WHERE id = $1")
         .bind(result.id)
         .execute(pool)
         .await;
