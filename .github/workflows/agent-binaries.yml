@@ -22,8 +22,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             runner: k8s-runners-amd64
+            arch: amd64
           - target: aarch64-unknown-linux-musl
             runner: k8s-runners
+            arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -37,10 +39,12 @@ jobs:
       - name: Install musl tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools musl-dev
 
       - name: Build binary
         working-directory: ./ilog-agent
+        env:
+          CC: musl-gcc
         run: |
           cargo build --release --target ${{ matrix.target }}
           mkdir -p ../output
