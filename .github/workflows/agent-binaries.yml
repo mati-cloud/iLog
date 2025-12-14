@@ -20,28 +20,45 @@ jobs:
     runs-on: k8s-runners
     strategy:
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build binary
-        uses: rust-build/rust-build.action@v1.4.5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: tar.gz
-          ARCHIVE_NAME: ilog-agent-${{ matrix.target }}
-          SRC_DIR: ilog-agent
-          UPLOAD_MODE: none
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Build binary
+        working-directory: ./ilog-agent
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          mkdir -p ../output
+          cp target/${{ matrix.target }}/release/ilog-agent ../output/ilog-agent-${{ matrix.target }}
+
+      - name: Create archive
+        run: |
+          cd output
+          tar -czf ilog-agent-${{ matrix.target }}.tar.gz ilog-agent-${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ilog-agent-${{ matrix.target }}
-          path: |
-            output/ilog-agent-${{ matrix.target }}.tar.gz
+          path: output/ilog-agent-${{ matrix.target }}.tar.gz
 
   release:
     if: github.event_name == 'release'
