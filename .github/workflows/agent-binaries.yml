@@ -102,21 +102,27 @@ jobs:
           body: |
             ## iLog Agent Binaries
             
-            Automated release of iLog agent binaries.
+            Automated release of iLog agent binaries for Linux (musl-based, statically linked).
             
-            ### Downloads
-            - `ilog-agent-x86_64-unknown-linux-musl.tar.gz` - AMD64/x86_64 Linux binary
-            - `ilog-agent-aarch64-unknown-linux-musl.tar.gz` - ARM64/aarch64 Linux binary
+            ### Quick Install
             
-            ### Installation
+            **AMD64/x86_64:**
             ```bash
-            # Download and extract
-            tar -xzf ilog-agent-*.tar.gz
-            
-            # Move to PATH
-            sudo mv ilog-agent-* /usr/local/bin/ilog-agent
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/ilog-agent-x86_64-unknown-linux-musl.tar.gz | tar xz
+            sudo mv ilog-agent-x86_64-unknown-linux-musl /usr/local/bin/ilog-agent
             sudo chmod +x /usr/local/bin/ilog-agent
             ```
+            
+            **ARM64/aarch64:**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/ilog-agent-aarch64-unknown-linux-musl.tar.gz | tar xz
+            sudo mv ilog-agent-aarch64-unknown-linux-musl /usr/local/bin/ilog-agent
+            sudo chmod +x /usr/local/bin/ilog-agent
+            ```
+            
+            ### Manual Downloads
+            - [ilog-agent-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/ilog-agent-x86_64-unknown-linux-musl.tar.gz) - AMD64/x86_64 Linux binary
+            - [ilog-agent-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/ilog-agent-aarch64-unknown-linux-musl.tar.gz) - ARM64/aarch64 Linux binary
           files: artifacts/**/*.tar.gz
           draft: false
           prerelease: false
