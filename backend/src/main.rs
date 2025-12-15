@@ -30,6 +30,7 @@ pub struct AppState {
     db: Arc<Database>,
     jwt_secret: String,
     allow_public_signup: bool,
+    #[allow(dead_code)]
     frontend_url: String,
 }
 
