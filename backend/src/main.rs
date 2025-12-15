@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         info!("This is a ONE-TIME registration token that expires in 24 hours.");
         info!("Use this URL to create the initial admin account:");
         info!("");
-        info!("    {}/sign-up?token={}", frontend_url, token);
+        info!("    {}/login?token={}", frontend_url, token);
         info!("");
         info!("The token will be automatically deleted after use.");
         info!("{}", separator);
