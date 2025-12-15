@@ -70,16 +70,17 @@ async fn main() -> anyhow::Result<()> {
     if user_count.0 == 0 {
         info!("No users found. This appears to be a fresh installation.");
         let token = auth::create_registration_token(&db_arc).await?;
-        info!("=".repeat(80));
+        let separator = "=".repeat(80);
+        info!("{}", separator);
         info!("🔐 INITIAL ADMIN REGISTRATION TOKEN GENERATED");
-        info!("=".repeat(80));
+        info!("{}", separator);
         info!("This is a ONE-TIME registration token that expires in 24 hours.");
         info!("Use this URL to create the initial admin account:");
         info!("");
         info!("    {}/sign-up?token={}", frontend_url, token);
         info!("");
         info!("The token will be automatically deleted after use.");
-        info!("=".repeat(80));
+        info!("{}", separator);
     } else if !allow_public_signup {
         info!("Public signup is disabled. Users can only register with a valid registration token.");
     }

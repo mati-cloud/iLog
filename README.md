@@ -19,11 +19,6 @@ DATABASE_URL=postgresql://user:password@host:5432/ilog
 # Authentication (minimum 32 characters)
 BETTER_AUTH_SECRET=your-secure-random-string-min-32-chars
 BETTER_AUTH_URL=https://yourdomain.com
-
-# Log ingestion endpoint
-NEXT_PUBLIC_ILOG_ENDPOINT=https://api.yourdomain.com/v1/logs
-ILOG_HTTP_TOKEN=proj_xxx_yyy
-NEXT_PUBLIC_SERVICE_NAME=ilog-frontend
 ```
 
 ### Backend
