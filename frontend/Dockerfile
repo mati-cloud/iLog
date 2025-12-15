@@ -4,7 +4,8 @@ FROM oven/bun:1.3-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-COPY package.json bun.lock ./
+# Copy only dependency files first for better caching
+COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed

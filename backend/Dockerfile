@@ -1,13 +1,25 @@
-FROM rust:latest as builder
-
+FROM rust:latest as chef
+RUN cargo install cargo-chef
 WORKDIR /app
 
-# Dependencies
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock* ./
+COPY src ./src
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+
+# Install dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Build dependencies - this layer is cached unless dependencies change
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Build application - only rebuilds when source changes
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
 COPY migrations ./migrations

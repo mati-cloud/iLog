@@ -46,8 +46,12 @@ jobs:
           file: ${{ inputs.dockerfile }}
           platforms: linux/amd64
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:buildcache-amd64
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:buildcache-amd64,mode=max
 
       - name: Export digest
         run: |
@@ -87,8 +91,12 @@ jobs:
           file: ${{ inputs.dockerfile }}
           platforms: linux/arm64
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:buildcache-arm64
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:buildcache-arm64,mode=max
 
       - name: Export digest
         run: |
