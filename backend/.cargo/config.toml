@@ -4,8 +4,8 @@
 # Use all available CPU cores for parallel compilation
 jobs = 0  # 0 = number of logical CPUs
 
-# Incremental compilation for faster rebuilds
-incremental = true
+# Disable incremental compilation (incompatible with sccache)
+incremental = false
 
 [target.x86_64-unknown-linux-gnu]
 # Use mold linker for faster linking (10x faster than ld)
