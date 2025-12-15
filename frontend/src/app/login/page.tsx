@@ -1,8 +1,8 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,12 +18,49 @@ import { signIn, signUp } from "@/lib/auth-client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationAllowed, setRegistrationAllowed] = useState(true);
+  const [checkingRegistration, setCheckingRegistration] = useState(false);
+  const registrationToken = searchParams.get("token");
+
+  useEffect(() => {
+    const checkRegistrationStatus = async () => {
+      if (!isSignUp) return;
+      
+      setCheckingRegistration(true);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const url = new URL(`${apiUrl}/api/auth/registration-status`);
+        if (registrationToken) {
+          url.searchParams.set("token", registrationToken);
+        }
+        
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        
+        if (!data.allowed) {
+          setError("Registration is disabled. A valid registration token is required.");
+          setRegistrationAllowed(false);
+          setIsSignUp(false);
+        } else {
+          setRegistrationAllowed(true);
+          setError("");
+        }
+      } catch (err) {
+        console.error("Failed to check registration status:", err);
+      } finally {
+        setCheckingRegistration(false);
+      }
+    };
+
+    checkRegistrationStatus();
+  }, [isSignUp, registrationToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,10 +69,16 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
+        if (!registrationAllowed) {
+          setError("Registration is not allowed without a valid token.");
+          return;
+        }
+        
         const result = await signUp.email({
           email,
           password,
           name,
+          callbackURL: "/",
         });
 
         if (result.error) {
@@ -149,13 +192,26 @@ export default function LoginPage() {
           <div className="mt-6 text-center">
             <Button
               variant="link"
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={() => {
+                if (!isSignUp) {
+                  setIsSignUp(true);
+                } else {
+                  setIsSignUp(false);
+                  setError("");
+                }
+              }}
               className="text-sm"
+              disabled={checkingRegistration}
             >
               {isSignUp
                 ? "Already have an account? Sign in"
                 : "Don't have an account? Sign up"}
             </Button>
+            {registrationToken && isSignUp && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Using registration token
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
