@@ -1,0 +1,22 @@
+# Cargo build optimizations
+
+[build]
+# Use all available CPU cores for parallel compilation
+jobs = 0  # 0 = number of logical CPUs
+
+# Incremental compilation for faster rebuilds
+incremental = true
+
+[target.x86_64-unknown-linux-gnu]
+# Use mold linker for faster linking (10x faster than ld)
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+# Use mold linker for ARM64 as well
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# Network optimizations
+[net]
+git-fetch-with-cli = true  # Use git CLI for better performance
