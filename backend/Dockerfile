@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
 # Configure sccache and cargo optimizations
 ENV RUSTC_WRAPPER=sccache \
     SCCACHE_DIR=/sccache \
-    CARGO_INCREMENTAL=1 \
+    CARGO_INCREMENTAL=0 \
     CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 # Use mold linker for faster linking
