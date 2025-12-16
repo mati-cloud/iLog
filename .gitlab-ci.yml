@@ -1,0 +1,33 @@
+stages:
+  - build
+
+variables:
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+  # GitHub Container Registry
+  GHCR_REGISTRY: ghcr.io
+  GHCR_IMAGE: $GHCR_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-frontend
+
+build:frontend:
+  stage: build
+  image: docker:29-cli
+  services:
+    - docker:29-dind
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  script:
+    - |
+      docker buildx create --use --name builder --driver docker-container || true
+      docker buildx build \
+        --file ./frontend/Dockerfile \
+        --cache-from type=registry,ref=$GHCR_IMAGE:buildcache \
+        --cache-to type=registry,ref=$GHCR_IMAGE:buildcache,mode=max \
+        --tag $GHCR_IMAGE:$CI_COMMIT_SHORT_SHA \
+        --tag $GHCR_IMAGE:latest \
+        --push \
+        --provenance=false \
+        ./frontend
+  after_script:
+    - docker buildx rm builder || true
+  only:
+    - main
