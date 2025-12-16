@@ -38,9 +38,3 @@ CREATE INDEX IF NOT EXISTS idx_logs_severity ON logs (severity_number, time DESC
 CREATE INDEX IF NOT EXISTS idx_logs_body_gin ON logs USING GIN (to_tsvector('english', body));
 CREATE INDEX IF NOT EXISTS idx_logs_resource_attrs ON logs USING GIN (resource_attributes);
 CREATE INDEX IF NOT EXISTS idx_logs_log_attrs ON logs USING GIN (log_attributes);
-
--- Create default admin user (password: admin123 - CHANGE IN PRODUCTION)
--- Password hash for 'admin123' using bcrypt
-INSERT INTO users (username, password_hash, email) 
-VALUES ('admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqVr/qvXqO', 'admin@ilog.local')
-ON CONFLICT (username) DO NOTHING;
