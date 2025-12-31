@@ -40,8 +40,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 # Copy package.json for runtime
 COPY --from=builder /app/package.json ./package.json
 
-RUN apk add curl
-
 USER nextjs
 
 EXPOSE 3000

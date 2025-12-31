@@ -22,10 +22,10 @@ build:frontend:
       docker buildx create --use --name builder --driver docker-container || true
       docker buildx build \
         --file ./frontend/Dockerfile \
-        --cache-from type=registry,ref=$GHCR_IMAGE:buildcache \
-        --cache-to type=registry,ref=$GHCR_IMAGE:buildcache,mode=max \
-        --tag $GHCR_IMAGE:$CI_COMMIT_SHORT_SHA \
-        --tag $GHCR_IMAGE:latest \
+        --cache-from type=registry,ref=$IMAGE_NAME:buildcache \
+        --cache-to type=registry,ref=$IMAGE_NAME:buildcache,mode=max \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA \
+        --tag $IMAGE_NAME:latest \
         --push \
         --provenance=false \
         ./frontend
