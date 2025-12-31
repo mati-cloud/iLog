@@ -5,7 +5,7 @@ FROM base AS deps
 WORKDIR /app
 
 # Copy only dependency files first for better caching
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed
