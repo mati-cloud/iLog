@@ -9,11 +9,41 @@ Lightweight, modular log collector for iLog written in Rust.
 - **🐳 Docker** - Stream container logs (optional)
 - **⚡ Lightweight** - ~5-10MB RAM usage
 - **🔧 Modular** - Compile only what you need
-- **🔐 Secure** - Token-based authentication
+- **🔐 Secure** - ChaCha20-Poly1305 encryption + token auth
+- **🚀 Real-time** - Logs sent within ~10ms (no artificial batching)
+- **🔌 Persistent** - Single TCP connection with LZ4 compression
 
 ## Installation
 
-### Pre-built Binaries
+### Quick Install (VPS/Server)
+
+Automated installation as systemd service:
+
+```bash
+# Download and extract
+curl -L https://github.com/mati-cloud/ilog/releases/latest/download/ilog-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
+
+# Run installer (creates service, config, etc.)
+sudo ./install.sh
+
+# Edit config with your server details
+sudo nano /etc/ilog/config.toml
+
+# Start the service
+sudo systemctl start ilog-agent
+sudo systemctl enable ilog-agent
+
+# Check status
+sudo systemctl status ilog-agent
+```
+
+The installer will:
+- ✅ Install binary to `/usr/local/bin/ilog-agent`
+- ✅ Create config at `/etc/ilog/config.toml`
+- ✅ Set up systemd service with auto-restart
+- ✅ Configure security hardening and resource limits
+
+### Manual Installation
 
 Download the latest release for your platform:
 
@@ -29,7 +59,7 @@ sudo mv ilog-agent /usr/local/bin/
 sudo chmod +x /usr/local/bin/ilog-agent
 ```
 
-### From Source
+### Build From Source
 
 ```bash
 # Default features (file + journald)
@@ -40,6 +70,8 @@ cargo build --release --no-default-features --features file
 
 # All features
 cargo build --release --features all
+
+# Binary will be at: target/release/ilog-agent
 ```
 
 ## Configuration
@@ -52,6 +84,7 @@ Create `/etc/ilog/config.toml`:
 [agent]
 server = "ilog.company.com:8080"
 token = "proj_abc123_xyz789"
+protocol = "tcp"  # "tcp" (default) or "http"
 
 [sources.file]
 enabled = true
@@ -62,6 +95,20 @@ enabled = true
 units = ["nginx.service"]
 ```
 
+### Protocol Options
+
+**TCP (Default)** - Raw TCP socket with encryption and compression:
+- ✅ ChaCha20-Poly1305 AEAD encryption
+- ✅ LZ4 compression (2-3x size reduction)
+- ✅ Persistent connection (no handshake overhead)
+- ✅ Sub-millisecond latency
+- ✅ Automatic reconnection with exponential backoff
+
+**HTTP** - Traditional HTTP/1.1 (requires `http` feature):
+- ✅ Firewall-friendly
+- ✅ Load balancer compatible
+- ❌ Higher latency (~5-15ms overhead per batch)
+
 ### Option 2: Environment Variables
 
 ```bash
@@ -70,6 +117,30 @@ export ILOG_AGENT_TOKEN="proj_abc123_xyz789"
 ```
 
 ## Usage
+
+### As Systemd Service (Recommended)
+
+```bash
+# Start service
+sudo systemctl start ilog-agent
+
+# Stop service
+sudo systemctl stop ilog-agent
+
+# Restart service
+sudo systemctl restart ilog-agent
+
+# Enable auto-start on boot
+sudo systemctl enable ilog-agent
+
+# Check status
+sudo systemctl status ilog-agent
+
+# View logs
+sudo journalctl -u ilog-agent -f
+```
+
+### Manual Execution
 
 ```bash
 # Use config file
@@ -81,25 +152,18 @@ ILOG_AGENT_TOKEN=proj_xxx_yyy \
 ilog-agent
 ```
 
-## Systemd Service
-
-```ini
-[Unit]
-Description=iLog Agent
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/ilog-agent --config /etc/ilog/config.toml
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
+## Uninstall
 
 ```bash
-sudo systemctl enable --now ilog-agent
+# Run uninstaller
+sudo ./uninstall.sh
+
+# Or manually:
+sudo systemctl stop ilog-agent
+sudo systemctl disable ilog-agent
+sudo rm /etc/systemd/system/ilog-agent.service
+sudo rm /usr/local/bin/ilog-agent
+sudo rm -rf /etc/ilog
 ```
 
 ## Build Sizes

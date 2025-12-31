@@ -1,17 +1,14 @@
 # iLog Agent Configuration Example
 
 [agent]
-# iLog server address (domain or IP)
+# iLog server address (domain:port for TCP, or URL for HTTP)
 server = "ilog.company.com:8080"
 
 # Project token (get from iLog UI)
 token = "proj_abc123_xyz789"
 
-# Batch size (number of logs before sending)
-batch_size = 100
-
-# Flush interval in seconds
-flush_interval_secs = 5
+# Protocol: "tcp" (default, real-time with encryption + compression) or "http"
+protocol = "tcp"
 
 # File log sources
 [sources.file]

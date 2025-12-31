@@ -15,8 +15,15 @@ serde_json = "1.0"
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
 
-# HTTP client
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# HTTP client (kept for backward compatibility)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+
+# Encryption (ChaCha20-Poly1305)
+chacha20poly1305 = "0.10"
+rand = "0.8"
+
+# Compression (LZ4)
+lz4 = "1.24"
 
 # Logging
 tracing = "0.1"
@@ -52,6 +59,7 @@ default = ["file"]
 file = ["notify"]
 journald = ["systemd"]
 docker = ["bollard"]
+http = ["reqwest"]
 all = ["file", "docker"]
 
 [profile.release]

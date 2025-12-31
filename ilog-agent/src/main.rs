@@ -1,5 +1,8 @@
 mod config;
 mod sender;
+mod tcp_sender;
+mod crypto;
+mod protocol;
 mod providers;
 
 use anyhow::Result;
@@ -12,6 +15,7 @@ use tracing_subscriber;
 
 use config::AgentConfig;
 use sender::LogSender;
+use tcp_sender::TcpLogSender;
 use providers::LogProvider;
 
 #[derive(Parser, Debug)]
@@ -38,7 +42,28 @@ async fn main() -> Result<()> {
 
     let config_clone = config.clone();
     let sender_handle = tokio::spawn(async move {
-        LogSender::start(config_clone, rx).await
+        match config_clone.agent.protocol.as_str() {
+            "tcp" => {
+                info!("Using TCP protocol with ChaCha20-Poly1305 encryption and LZ4 compression");
+                TcpLogSender::start(config_clone, rx).await
+            }
+            "http" => {
+                #[cfg(feature = "http")]
+                {
+                    info!("Using HTTP protocol");
+                    LogSender::start(config_clone, rx).await
+                }
+                #[cfg(not(feature = "http"))]
+                {
+                    error!("HTTP protocol requested but 'http' feature not enabled");
+                    Err(anyhow::anyhow!("HTTP feature not enabled"))
+                }
+            }
+            proto => {
+                error!("Unknown protocol: {}", proto);
+                Err(anyhow::anyhow!("Unknown protocol: {}", proto))
+            }
+        }
     });
 
     // Collect all enabled providers

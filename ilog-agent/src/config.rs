@@ -12,10 +12,8 @@ pub struct AgentConfig {
 pub struct AgentSettings {
     pub server: String,
     pub token: String,
-    #[serde(default = "default_batch_size")]
-    pub batch_size: usize,
-    #[serde(default = "default_flush_interval")]
-    pub flush_interval_secs: u64,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -49,19 +47,14 @@ pub struct DockerSource {
     pub containers: Vec<String>,
 }
 
-fn default_batch_size() -> usize {
-    100
-}
-
-fn default_flush_interval() -> u64 {
-    5
+fn default_protocol() -> String {
+    "tcp".to_string()
 }
 
 impl AgentConfig {
     pub fn load(path: &PathBuf) -> Result<Self, config::ConfigError> {
         let config = config::Config::builder()
-            .set_default("agent.batch_size", 100)?
-            .set_default("agent.flush_interval_secs", 5)?
+            .set_default("agent.protocol", "tcp")?
             .add_source(config::File::from(path.clone()))
             .add_source(config::Environment::with_prefix("ILOG_AGENT").separator("_"))
             .build()?;
