@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn, signUp } from "@/lib/auth-client";
+import { config } from "@/lib/runtime-config";
 
 function LoginForm() {
   const router = useRouter();
@@ -35,8 +36,7 @@ function LoginForm() {
       
       setCheckingRegistration(true);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-        const url = new URL(`${apiUrl}/api/auth/registration-status`);
+        const url = new URL(`${config.NEXT_PUBLIC_API_URL}/api/auth/registration-status`);
         if (registrationToken) {
           url.searchParams.set("token", registrationToken);
         }

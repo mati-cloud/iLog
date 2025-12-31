@@ -35,6 +35,7 @@ export default function RootLayout({
       <head>
         <title>iLog - OpenTelemetry Logging System</title>
         <meta name="description" content="Real-time log streaming and analysis" />
+        <script src="/runtime-config.js" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
