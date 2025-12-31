@@ -40,6 +40,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 # Copy package.json for runtime
 COPY --from=builder /app/package.json ./package.json
 
+# Copy Better Auth migrations
+COPY better-auth_migrations /app/better-auth_migrations
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
