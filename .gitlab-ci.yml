@@ -12,11 +12,14 @@ build:frontend:
   stage: build
   image: docker:29-cli
   services:
-    - docker:29-dind
+    - name: docker:29-dind
+      command: ["--tls=false"]
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
   variables:
     IMAGE_NAME: $GHCR_IMAGE-frontend
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
   script:
     - |
       docker buildx create --use --name builder --driver docker-container || true
