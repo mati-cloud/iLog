@@ -44,6 +44,9 @@ COPY --from=builder /app/package.json ./package.json
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Give nextjs user write permissions to public directory for runtime config
+RUN chown -R nextjs:nodejs /app/public
+
 USER nextjs
 
 ENTRYPOINT ["docker-entrypoint.sh"]
