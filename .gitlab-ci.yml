@@ -24,6 +24,7 @@ build:frontend:amd64:
     - amd64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+    - echo "$DOCKER_HUB_TOKEN" | docker login -u $DOCKER_HUB_USERNAME --password-stdin
   script:
     - |
       docker buildx build \
@@ -53,6 +54,7 @@ build:frontend:arm64:
     - arm64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+    - echo "$DOCKER_HUB_TOKEN" | docker login -u $DOCKER_HUB_USERNAME --password-stdin
   script:
     - |
       docker buildx build \
@@ -83,6 +85,7 @@ build:backend:amd64:
     - amd64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+    - echo "$DOCKER_HUB_TOKEN" | docker login -u $DOCKER_HUB_USERNAME --password-stdin
   script:
     - |
       docker buildx build \
@@ -112,6 +115,7 @@ build:backend:arm64:
     - arm64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+    - echo "$DOCKER_HUB_TOKEN" | docker login -u $DOCKER_HUB_USERNAME --password-stdin
   script:
     - |
       docker buildx build \
