@@ -43,15 +43,20 @@ CREATE TABLE IF NOT EXISTS registration_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Add foreign key constraints to Better Auth user table
-ALTER TABLE services ADD CONSTRAINT services_owner_id_fkey 
-    FOREIGN KEY (owner_id) REFERENCES "user"(id) ON DELETE SET NULL;
-
-ALTER TABLE service_members ADD CONSTRAINT service_members_user_id_fkey 
-    FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;
-
-ALTER TABLE registration_tokens ADD CONSTRAINT registration_tokens_created_by_fkey 
-    FOREIGN KEY (created_by) REFERENCES "user"(id) ON DELETE SET NULL;
+-- Add foreign key constraints to Better Auth user table (only if user table exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user') THEN
+        ALTER TABLE services ADD CONSTRAINT services_owner_id_fkey 
+            FOREIGN KEY (owner_id) REFERENCES "user"(id) ON DELETE SET NULL;
+        
+        ALTER TABLE service_members ADD CONSTRAINT service_members_user_id_fkey 
+            FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;
+        
+        ALTER TABLE registration_tokens ADD CONSTRAINT registration_tokens_created_by_fkey 
+            FOREIGN KEY (created_by) REFERENCES "user"(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- Add foreign key for logs to services
 ALTER TABLE logs ADD CONSTRAINT logs_service_id_fkey 
