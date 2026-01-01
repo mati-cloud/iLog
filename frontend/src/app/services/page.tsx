@@ -54,6 +54,7 @@ export default function ServicesPage() {
   const [newService, setNewService] = useState({
     name: "",
     description: "",
+    source_type: "application",
   });
 
   const serviceColumns: Column<Service>[] = [
@@ -199,7 +200,7 @@ export default function ServicesPage() {
 
       if (response.ok) {
         setCreateDialogOpen(false);
-        setNewService({ name: "", description: "" });
+        setNewService({ name: "", description: "", source_type: "application" });
         fetchServices();
       }
     } catch (error) {
