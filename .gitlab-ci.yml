@@ -24,7 +24,6 @@ build:frontend:amd64:
     PLATFORM: linux/amd64
   script:
     - |
-      docker buildx create --use --name builder-amd64 --driver docker-container || true
       docker buildx build \
         --platform $PLATFORM \
         --file ./frontend/Dockerfile \
@@ -35,8 +34,6 @@ build:frontend:amd64:
         --push \
         --provenance=false \
         ./frontend
-  after_script:
-    - docker buildx rm builder-amd64 || true
   only:
     - main
 
@@ -54,7 +51,6 @@ build:frontend:arm64:
     PLATFORM: linux/arm64
   script:
     - |
-      docker buildx create --use --name builder-arm64 --driver docker-container || true
       docker buildx build \
         --platform $PLATFORM \
         --file ./frontend/Dockerfile \
@@ -65,8 +61,6 @@ build:frontend:arm64:
         --push \
         --provenance=false \
         ./frontend
-  after_script:
-    - docker buildx rm builder-arm64 || true
   only:
     - main
 
@@ -85,7 +79,6 @@ build:backend:amd64:
     PLATFORM: linux/amd64
   script:
     - |
-      docker buildx create --use --name builder-amd64 --driver docker-container || true
       docker buildx build \
         --platform $PLATFORM \
         --file ./backend/Dockerfile \
@@ -96,8 +89,6 @@ build:backend:amd64:
         --push \
         --provenance=false \
         ./backend
-  after_script:
-    - docker buildx rm builder-amd64 || true
   only:
     - main
 
@@ -115,7 +106,6 @@ build:backend:arm64:
     PLATFORM: linux/arm64
   script:
     - |
-      docker buildx create --use --name builder-arm64 --driver docker-container || true
       docker buildx build \
         --platform $PLATFORM \
         --file ./backend/Dockerfile \
@@ -126,8 +116,6 @@ build:backend:arm64:
         --push \
         --provenance=false \
         ./backend
-  after_script:
-    - docker buildx rm builder-arm64 || true
   only:
     - main
 
