@@ -5,8 +5,6 @@ stages:
 variables:
   DOCKER_BUILDKIT: 1
   BUILDKIT_PROGRESS: plain
-  DOCKER_TLS_CERTDIR: ""
-  DOCKER_HOST: tcp://docker:2375
   # GitHub Container Registry
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
@@ -16,8 +14,7 @@ build:frontend:amd64:
   stage: build
   image: docker:29-cli
   services:
-    - name: docker:29-dind
-      command: ["--tls=false"]
+    - docker:29-dind
   tags:
     - amd64
   before_script:
@@ -47,8 +44,7 @@ build:frontend:arm64:
   stage: build
   image: docker:29-cli
   services:
-    - name: docker:29-dind
-      command: ["--tls=false"]
+    - docker:29-dind
   tags:
     - arm64
   before_script:
@@ -79,8 +75,7 @@ build:backend:amd64:
   stage: build
   image: docker:29-cli
   services:
-    - name: docker:29-dind
-      command: ["--tls=false"]
+    - docker:29-dind
   tags:
     - amd64
   before_script:
@@ -110,8 +105,7 @@ build:backend:arm64:
   stage: build
   image: docker:29-cli
   services:
-    - name: docker:29-dind
-      command: ["--tls=false"]
+    - docker:29-dind
   tags:
     - arm64
   before_script:
