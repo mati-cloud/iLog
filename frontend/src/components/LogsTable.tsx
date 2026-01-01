@@ -46,6 +46,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { signOut } from "@/lib/auth-client";
+import { config } from "@/lib/runtime-config";
 import {
   detectLogSourceType,
   type LogAttributes,
@@ -196,7 +197,7 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
     }
 
     // Connect to WebSocket using current service
-    const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080"}/api/logs/stream?service=${currentService.id}`;
+    const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}`;
     console.log("Connecting to WebSocket:", wsUrl);
 
     const ws = new WebSocket(wsUrl);

@@ -1,8 +1,7 @@
 import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+import { serverConfig } from "@/lib/server-config";
 
 async function proxyRequest(request: NextRequest, path: string[]) {
   const incomingHeaders = await headers();
@@ -16,7 +15,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   }
 
   const backendPath = path.join("/");
-  const url = new URL(`/api/${backendPath}`, BACKEND_URL);
+  const url = new URL(`/api/${backendPath}`, serverConfig.backendUrl);
 
   request.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.append(key, value);
