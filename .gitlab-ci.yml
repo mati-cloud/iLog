@@ -5,8 +5,6 @@ stages:
 variables:
   DOCKER_BUILDKIT: 1
   BUILDKIT_PROGRESS: plain
-  DOCKER_TLS_CERTDIR: ""
-  DOCKER_HOST: tcp://docker:2375
   # GitHub Container Registry
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
@@ -17,15 +15,15 @@ build:frontend:amd64:
   image: docker:29-cli
   services:
     - name: docker:29-dind
-      variables:
-        DOCKER_TLS_CERTDIR: ""
+      command: ["dockerd-entrypoint.sh", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    IMAGE_NAME: $GHCR_IMAGE-frontend
+    PLATFORM: linux/amd64
   tags:
     - amd64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
-  variables:
-    IMAGE_NAME: $GHCR_IMAGE-frontend
-    PLATFORM: linux/amd64
   script:
     - |
       docker buildx build \
@@ -46,15 +44,15 @@ build:frontend:arm64:
   image: docker:29-cli
   services:
     - name: docker:29-dind
-      variables:
-        DOCKER_TLS_CERTDIR: ""
+      command: ["dockerd-entrypoint.sh", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    IMAGE_NAME: $GHCR_IMAGE-frontend
+    PLATFORM: linux/arm64
   tags:
     - arm64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
-  variables:
-    IMAGE_NAME: $GHCR_IMAGE-frontend
-    PLATFORM: linux/arm64
   script:
     - |
       docker buildx build \
@@ -76,15 +74,15 @@ build:backend:amd64:
   image: docker:29-cli
   services:
     - name: docker:29-dind
-      variables:
-        DOCKER_TLS_CERTDIR: ""
+      command: ["dockerd-entrypoint.sh", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    IMAGE_NAME: $GHCR_IMAGE-backend
+    PLATFORM: linux/amd64
   tags:
     - amd64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
-  variables:
-    IMAGE_NAME: $GHCR_IMAGE-backend
-    PLATFORM: linux/amd64
   script:
     - |
       docker buildx build \
@@ -105,15 +103,15 @@ build:backend:arm64:
   image: docker:29-cli
   services:
     - name: docker:29-dind
-      variables:
-        DOCKER_TLS_CERTDIR: ""
+      command: ["dockerd-entrypoint.sh", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    IMAGE_NAME: $GHCR_IMAGE-backend
+    PLATFORM: linux/arm64
   tags:
     - arm64
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
-  variables:
-    IMAGE_NAME: $GHCR_IMAGE-backend
-    PLATFORM: linux/arm64
   script:
     - |
       docker buildx build \
@@ -171,4 +169,3 @@ manifest:backend:
       docker manifest push $IMAGE_NAME:latest
   only:
     - main
-
