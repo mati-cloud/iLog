@@ -1,5 +1,6 @@
 stages:
   - build
+  - manifest
 
 variables:
   DOCKER_BUILDKIT: 1
@@ -8,28 +9,168 @@ variables:
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
 
-build:frontend:
+# Frontend builds
+build:frontend:amd64:
   stage: build
   image: docker:29-cli
   services:
     - docker:29-dind
+  tags:
+    - amd64
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  variables:
+    IMAGE_NAME: $GHCR_IMAGE-frontend
+    PLATFORM: linux/amd64
+  script:
+    - |
+      docker buildx create --use --name builder-amd64 --driver docker-container || true
+      docker buildx build \
+        --platform $PLATFORM \
+        --file ./frontend/Dockerfile \
+        --cache-from type=registry,ref=$IMAGE_NAME:buildcache-amd64 \
+        --cache-to type=registry,ref=$IMAGE_NAME:buildcache-amd64,mode=max \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-amd64 \
+        --tag $IMAGE_NAME:latest-amd64 \
+        --push \
+        --provenance=false \
+        ./frontend
+  after_script:
+    - docker buildx rm builder-amd64 || true
+  only:
+    - main
+
+build:frontend:arm64:
+  stage: build
+  image: docker:29-cli
+  services:
+    - docker:29-dind
+  tags:
+    - arm64
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  variables:
+    IMAGE_NAME: $GHCR_IMAGE-frontend
+    PLATFORM: linux/arm64
+  script:
+    - |
+      docker buildx create --use --name builder-arm64 --driver docker-container || true
+      docker buildx build \
+        --platform $PLATFORM \
+        --file ./frontend/Dockerfile \
+        --cache-from type=registry,ref=$IMAGE_NAME:buildcache-arm64 \
+        --cache-to type=registry,ref=$IMAGE_NAME:buildcache-arm64,mode=max \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-arm64 \
+        --tag $IMAGE_NAME:latest-arm64 \
+        --push \
+        --provenance=false \
+        ./frontend
+  after_script:
+    - docker buildx rm builder-arm64 || true
+  only:
+    - main
+
+# Backend builds
+build:backend:amd64:
+  stage: build
+  image: docker:29-cli
+  services:
+    - docker:29-dind
+  tags:
+    - amd64
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  variables:
+    IMAGE_NAME: $GHCR_IMAGE-backend
+    PLATFORM: linux/amd64
+  script:
+    - |
+      docker buildx create --use --name builder-amd64 --driver docker-container || true
+      docker buildx build \
+        --platform $PLATFORM \
+        --file ./backend/Dockerfile \
+        --cache-from type=registry,ref=$IMAGE_NAME:buildcache-amd64 \
+        --cache-to type=registry,ref=$IMAGE_NAME:buildcache-amd64,mode=max \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-amd64 \
+        --tag $IMAGE_NAME:latest-amd64 \
+        --push \
+        --provenance=false \
+        ./backend
+  after_script:
+    - docker buildx rm builder-amd64 || true
+  only:
+    - main
+
+build:backend:arm64:
+  stage: build
+  image: docker:29-cli
+  services:
+    - docker:29-dind
+  tags:
+    - arm64
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  variables:
+    IMAGE_NAME: $GHCR_IMAGE-backend
+    PLATFORM: linux/arm64
+  script:
+    - |
+      docker buildx create --use --name builder-arm64 --driver docker-container || true
+      docker buildx build \
+        --platform $PLATFORM \
+        --file ./backend/Dockerfile \
+        --cache-from type=registry,ref=$IMAGE_NAME:buildcache-arm64 \
+        --cache-to type=registry,ref=$IMAGE_NAME:buildcache-arm64,mode=max \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-arm64 \
+        --tag $IMAGE_NAME:latest-arm64 \
+        --push \
+        --provenance=false \
+        ./backend
+  after_script:
+    - docker buildx rm builder-arm64 || true
+  only:
+    - main
+
+# Create multi-arch manifests
+manifest:frontend:
+  stage: manifest
+  image: docker:29-cli
   before_script:
     - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
   variables:
     IMAGE_NAME: $GHCR_IMAGE-frontend
   script:
     - |
-      docker buildx create --use --name builder --driver docker-container || true
-      docker buildx build \
-        --file ./frontend/Dockerfile \
-        --cache-from type=registry,ref=$IMAGE_NAME:buildcache \
-        --cache-to type=registry,ref=$IMAGE_NAME:buildcache,mode=max \
-        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA \
-        --tag $IMAGE_NAME:latest \
-        --push \
-        --provenance=false \
-        ./frontend
-  after_script:
-    - docker buildx rm builder || true
+      docker manifest create $IMAGE_NAME:$CI_COMMIT_SHORT_SHA \
+        $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-amd64 \
+        $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-arm64
+      docker manifest push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+      
+      docker manifest create $IMAGE_NAME:latest \
+        $IMAGE_NAME:latest-amd64 \
+        $IMAGE_NAME:latest-arm64
+      docker manifest push $IMAGE_NAME:latest
   only:
     - main
+
+manifest:backend:
+  stage: manifest
+  image: docker:29-cli
+  before_script:
+    - echo "$GITHUB_TOKEN" | docker login $GHCR_REGISTRY -u $GITHUB_USERNAME --password-stdin
+  variables:
+    IMAGE_NAME: $GHCR_IMAGE-backend
+  script:
+    - |
+      docker manifest create $IMAGE_NAME:$CI_COMMIT_SHORT_SHA \
+        $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-amd64 \
+        $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-arm64
+      docker manifest push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+      
+      docker manifest create $IMAGE_NAME:latest \
+        $IMAGE_NAME:latest-amd64 \
+        $IMAGE_NAME:latest-arm64
+      docker manifest push $IMAGE_NAME:latest
+  only:
+    - main
+
