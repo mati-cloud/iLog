@@ -16,7 +16,8 @@ build:frontend:amd64:
   stage: build
   image: docker:29-cli
   services:
-    - docker:29-dind
+    - name: docker:29-dind
+      command: ["--tls=false"]
   tags:
     - amd64
   before_script:
@@ -46,7 +47,8 @@ build:frontend:arm64:
   stage: build
   image: docker:29-cli
   services:
-    - docker:29-dind
+    - name: docker:29-dind
+      command: ["--tls=false"]
   tags:
     - arm64
   before_script:
@@ -77,7 +79,8 @@ build:backend:amd64:
   stage: build
   image: docker:29-cli
   services:
-    - docker:29-dind
+    - name: docker:29-dind
+      command: ["--tls=false"]
   tags:
     - amd64
   before_script:
@@ -107,7 +110,8 @@ build:backend:arm64:
   stage: build
   image: docker:29-cli
   services:
-    - docker:29-dind
+    - name: docker:29-dind
+      command: ["--tls=false"]
   tags:
     - arm64
   before_script:
