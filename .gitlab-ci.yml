@@ -5,7 +5,6 @@ stages:
 variables:
   DOCKER_BUILDKIT: 1
   BUILDKIT_PROGRESS: plain
-  DOCKER_TLS_CERTDIR: /certs
   # GitHub Container Registry
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
