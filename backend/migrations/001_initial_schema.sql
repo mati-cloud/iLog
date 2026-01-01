@@ -1,16 +1,6 @@
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
--- Users table for authentication
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_login TIMESTAMPTZ
-);
-
 -- OpenTelemetry logs table optimized for time-series data
 CREATE TABLE IF NOT EXISTS logs (
     time TIMESTAMPTZ NOT NULL,
@@ -25,7 +15,8 @@ CREATE TABLE IF NOT EXISTS logs (
     log_attributes JSONB,
     scope_name VARCHAR(255),
     scope_version VARCHAR(50),
-    scope_attributes JSONB
+    scope_attributes JSONB,
+    service_id UUID
 );
 
 -- Create hypertable for time-series optimization
@@ -38,3 +29,5 @@ CREATE INDEX IF NOT EXISTS idx_logs_severity ON logs (severity_number, time DESC
 CREATE INDEX IF NOT EXISTS idx_logs_body_gin ON logs USING GIN (to_tsvector('english', body));
 CREATE INDEX IF NOT EXISTS idx_logs_resource_attrs ON logs USING GIN (resource_attributes);
 CREATE INDEX IF NOT EXISTS idx_logs_log_attrs ON logs USING GIN (log_attributes);
+CREATE INDEX IF NOT EXISTS idx_logs_service_id_time ON logs(service_id, time DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_service_name_id ON logs(service_id, service_name, time DESC);

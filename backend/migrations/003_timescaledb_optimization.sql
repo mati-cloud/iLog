@@ -10,10 +10,10 @@ ALTER TABLE logs SET (
 -- Add compression policy: compress data older than 7 days
 SELECT add_compression_policy('logs', INTERVAL '7 days', if_not_exists => TRUE);
 
--- Retention policy: drop chunks older than 90 days (optional, adjust as needed)
+-- Retention policy: drop chunks older than 90 days (adjust as needed)
 SELECT add_retention_policy('logs', INTERVAL '90 days', if_not_exists => TRUE);
 
--- Continuous aggregate for hourly log statistics (optional but useful)
+-- Continuous aggregate for hourly log statistics
 CREATE MATERIALIZED VIEW IF NOT EXISTS logs_hourly
 WITH (timescaledb.continuous) AS
 SELECT 
