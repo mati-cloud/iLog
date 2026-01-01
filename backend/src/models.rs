@@ -55,6 +55,7 @@ pub struct Claims {
 pub struct Service {
     pub id: Uuid,
     pub name: String,
+    pub slug: String,
     pub description: Option<String>,
     pub owner_id: String,
     pub source_type: String,

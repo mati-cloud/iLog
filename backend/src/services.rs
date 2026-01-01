@@ -16,6 +16,18 @@ use crate::{
     AppState,
 };
 
+// Generate a slug from a service name
+fn generate_slug(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 // Generate a secure random token
 fn generate_token(service_id: Uuid) -> String {
     let random: String = rand::thread_rng()
@@ -58,14 +70,17 @@ pub async fn create_service(
     let user_id = get_user_uuid(&claims);
     tracing::info!("Creating service for user: {} (UUID: {})", claims.sub, user_id);
 
+    let slug = generate_slug(&payload.name);
+
     let service = sqlx::query_as::<_, Service>(
         r#"
-        INSERT INTO services (name, description, owner_id, source_type)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, name, description, owner_id, source_type, created_at, updated_at
+        INSERT INTO services (name, slug, description, owner_id, source_type)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, name, slug, description, owner_id, source_type, created_at, updated_at
         "#,
     )
     .bind(&payload.name)
+    .bind(&slug)
     .bind(&payload.description)
     .bind(&claims.sub)
     .bind(&payload.source_type)
@@ -98,7 +113,7 @@ pub async fn list_services(
 
     let services = sqlx::query_as::<_, Service>(
         r#"
-        SELECT p.id, p.name, p.description, p.owner_id, p.source_type, p.created_at, p.updated_at
+        SELECT p.id, p.name, p.slug, p.description, p.owner_id, p.source_type, p.created_at, p.updated_at
         FROM services p
         INNER JOIN service_members pm ON p.id = pm.service_id
         WHERE pm.user_id = $1
@@ -134,7 +149,7 @@ pub async fn get_service(
     }
 
     let service = sqlx::query_as::<_, Service>(
-        "SELECT id, name, description, owner_id, source_type, created_at, updated_at FROM services WHERE id = $1",
+        "SELECT id, name, slug, description, owner_id, source_type, created_at, updated_at FROM services WHERE id = $1",
     )
     .bind(service_id)
     .fetch_optional(state.db.pool())
@@ -186,7 +201,7 @@ pub async fn update_service(
         query.push_str(&params.join(", "));
     }
 
-    query.push_str(&format!(" WHERE id = '{}' RETURNING id, name, description, owner_id, source_type, created_at, updated_at", service_id));
+    query.push_str(&format!(" WHERE id = '{}' RETURNING id, name, slug, description, owner_id, source_type, created_at, updated_at", service_id));
 
     let service = sqlx::query_as::<_, Service>(&query)
         .fetch_one(state.db.pool())
