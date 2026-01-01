@@ -19,7 +19,7 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use crate::{
-    auth::{auth_middleware, LoginRequest, RegisterRequest},
+    auth::auth_middleware,
     db::Database,
     models::{LogQuery, OtelLog},
     streaming::handle_websocket,
@@ -29,9 +29,6 @@ use crate::{
 pub struct AppState {
     db: Arc<Database>,
     jwt_secret: String,
-    allow_public_signup: bool,
-    #[allow(dead_code)]
-    frontend_url: String,
 }
 
 #[tokio::main]
@@ -52,52 +49,16 @@ async fn main() -> anyhow::Result<()> {
 
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
-    
-    let allow_public_signup = std::env::var("ALLOW_PUBLIC_SIGNUP")
-        .unwrap_or_else(|_| "false".to_string())
-        .parse::<bool>()
-        .unwrap_or(false);
-    
-    let frontend_url = std::env::var("FRONTEND_URL")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     let db_arc = Arc::new(db);
-    
-    // Check if this is first run (no users exist) and generate registration token
-    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(db_arc.pool())
-        .await?;
-    
-    if user_count.0 == 0 {
-        info!("No users found. This appears to be a fresh installation.");
-        let token = auth::create_registration_token(&db_arc).await?;
-        let separator = "=".repeat(80);
-        info!("{}", separator);
-        info!("🔐 INITIAL ADMIN REGISTRATION TOKEN GENERATED");
-        info!("{}", separator);
-        info!("This is a ONE-TIME registration token that expires in 24 hours.");
-        info!("Use this URL to create the initial admin account:");
-        info!("");
-        info!("    {}/login?token={}", frontend_url, token);
-        info!("");
-        info!("The token will be automatically deleted after use.");
-        info!("{}", separator);
-    } else if !allow_public_signup {
-        info!("Public signup is disabled. Users can only register with a valid registration token.");
-    }
 
     let state = AppState {
         db: db_arc,
         jwt_secret,
-        allow_public_signup,
-        frontend_url,
     };
 
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/register", post(register))
-        .route("/api/auth/registration-status", get(check_registration_status))
         .route("/api/services", post(services::create_service))
         .route("/api/services", get(services::list_services))
         .route("/api/services/:id", get(services::get_service))
@@ -151,38 +112,6 @@ async fn health_check() -> impl IntoResponse {
         "status": "healthy",
         "service": "ilog-backend"
     }))
-}
-
-async fn login(
-    State(state): State<AppState>,
-    Json(payload): Json<LoginRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let token = auth::login(&state.db, &state.jwt_secret, payload).await?;
-    Ok(Json(serde_json::json!({ "token": token })))
-}
-
-async fn register(
-    State(state): State<AppState>,
-    Json(payload): Json<RegisterRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = auth::register(&state.db, payload, state.allow_public_signup).await?;
-    Ok(Json(serde_json::json!({
-        "message": "User registered successfully",
-        "user_id": user_id
-    })))
-}
-
-async fn check_registration_status(
-    State(state): State<AppState>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let token = params.get("token").map(|s| s.as_str());
-    let allowed = auth::check_registration_allowed(&state.db, token, state.allow_public_signup).await?;
-    
-    Ok(Json(serde_json::json!({
-        "allowed": allowed,
-        "public_signup_enabled": state.allow_public_signup
-    })))
 }
 
 async fn ingest_logs(
