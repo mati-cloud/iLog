@@ -1,6 +1,6 @@
 {
   "branches": ["main"],
-  "repositoryUrl": "https://github.com/mati-cloud/iLog",
+  "repositoryUrl": "git@gitlab.mati.cloud:ilog/ilog.git",
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
