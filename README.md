@@ -42,7 +42,6 @@ docker pull ghcr.io/mati-cloud/ilog-backend:latest
 Public pre-built - for both ARM64 and AMD64 (x86_64) architectures - are available under:
 - https://github.com/mati-cloud/ilog/releases
 
-
 ## Quick Start
 
 1. Copy `.env.dist` to `.env` in the frontend directory
