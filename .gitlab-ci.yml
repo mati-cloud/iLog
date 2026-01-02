@@ -11,7 +11,7 @@ variables:
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
   # GitHub Repository
-  GITHUB_REPO: mati-cloud/ilog
+  GITHUB_REPO: mati-cloud/iLog
 
 # Semantic Release - Auto versioning based on conventional commits
 semantic-release:
