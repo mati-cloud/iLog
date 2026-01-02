@@ -21,7 +21,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::{
     auth::auth_middleware,
     db::Database,
-    models::{LogQuery, OtelLog},
+    models::{Claims, LogQuery, OtelLog},
     streaming::handle_websocket,
 };
 
@@ -68,11 +68,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/services/:id/agents", get(services::list_agents))
         .route("/api/services/:id/agents/:agent_id", axum::routing::delete(services::revoke_agent))
         .route("/api/logs/query", get(query_logs))
-        .route("/api/logs/stream", get(stream_logs))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
         ))
+        .route("/api/logs/stream", get(stream_logs))
         .route("/v1/logs", post(ingest_logs))
         .layer(
             CorsLayer::new()
@@ -145,8 +145,28 @@ async fn stream_logs(
     ws: WebSocketUpgrade,
     Query(params): Query<LogQuery>,
     State(state): State<AppState>,
-) -> Response {
-    ws.on_upgrade(move |socket| handle_websocket(socket, state.db, params))
+) -> Result<Response, AppError> {
+    if let Some(token) = &params.token {
+        let backend_secret = state.jwt_secret.as_bytes();
+        let better_auth_secret = std::env::var("BETTER_AUTH_SECRET")
+            .unwrap_or_else(|_| "your-secret-key-change-in-production-min-32-chars".to_string());
+        
+        let is_valid = jsonwebtoken::decode::<Claims>(
+            token,
+            &jsonwebtoken::DecodingKey::from_secret(backend_secret),
+            &jsonwebtoken::Validation::default(),
+        ).is_ok() || jsonwebtoken::decode::<Claims>(
+            token,
+            &jsonwebtoken::DecodingKey::from_secret(better_auth_secret.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        ).is_ok();
+        
+        if is_valid {
+            return Ok(ws.on_upgrade(move |socket| handle_websocket(socket, state.db, params)));
+        }
+    }
+    
+    Err(anyhow::anyhow!("Unauthorized: Invalid or missing token").into())
 }
 
 pub struct AppError(anyhow::Error);

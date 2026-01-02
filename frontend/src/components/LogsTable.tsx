@@ -45,7 +45,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { signOut } from "@/lib/auth-client";
+import { signOut, token } from "@/lib/auth-client";
 import { config } from "@/lib/runtime-config";
 import {
   detectLogSourceType,
@@ -197,158 +197,173 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
     }
 
     // Connect to WebSocket using current service
-    const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}`;
-    console.log("Connecting to WebSocket:", wsUrl);
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("WebSocket connected");
-    };
-
-    ws.onmessage = (event) => {
+    const connectWebSocket = async () => {
       try {
-        const logData = JSON.parse(event.data);
-        console.log("WebSocket received log:", logData);
-
-        // Transform backend log format to frontend format
-        // Backend sends 'time_unix_nano' as nanosecond string
-        const timestamp =
-          logData.time_unix_nano ||
-          logData.timeUnixNano ||
-          logData.time ||
-          logData.timestamp;
-        let formattedTime = "Invalid Date";
-        console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
-
-        try {
-          let date: Date;
-
-          if (typeof timestamp === "string" && /^\d+$/.test(timestamp)) {
-            const nanos = BigInt(timestamp);
-            const millis = Number(nanos / BigInt(1000000));
-            date = new Date(millis);
-            console.log("Parsed nanoseconds:", timestamp, "-> Date:", date);
-          } else if (timestamp) {
-            // ISO string or other date format
-            date = new Date(timestamp);
-            console.log("Parsed ISO/other:", timestamp, "-> Date:", date);
-          } else {
-            console.error("No timestamp found in log data");
-            date = new Date();
-          }
-
-          if (!Number.isNaN(date.getTime())) {
-            formattedTime = `${date.toLocaleTimeString("en-US", {
-              hour12: false,
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })}.${date.getMilliseconds().toString().padStart(3, "0")}`;
-            console.log("Formatted time:", formattedTime);
-          } else {
-            console.error("Invalid date after parsing:", date);
-          }
-        } catch (e) {
-          console.error("Error parsing timestamp:", timestamp, e);
+        const jwtResponse = await token();
+        let jwtToken: string | null = null;
+        
+        if (jwtResponse && 'data' in jwtResponse && jwtResponse.data) {
+          jwtToken = (jwtResponse.data as any).token;
+        }
+        
+        if (!jwtToken) {
+          console.error("No JWT token available for WebSocket authentication");
+          return;
         }
 
-        const attrs = logData.logAttributes || logData.log_attributes;
-        const sourceType = attrs?.source_type || "unknown";
+        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${encodeURIComponent(jwtToken)}`;
+        console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, 'token=***'));
 
-        // Determine source display name based on source type
-        let sourceName = "unknown";
-        let directoryPath: string | undefined;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-        if (sourceType === "docker") {
-          sourceName =
-            attrs?.container ||
-            logData.serviceName ||
-            logData.service_name ||
-            logData.service ||
-            "unknown";
-        } else if (sourceType === "file") {
-          const fullPath =
-            attrs?.file_path ||
-            logData.serviceName ||
-            logData.service_name ||
-            logData.service;
-          if (fullPath) {
-            const parts = fullPath.split("/");
-            const filename = parts.pop() || fullPath;
-            sourceName = filename;
-
-            // Only set directory path if there's an actual directory (not just filename)
-            const dirPath = parts.join("/");
-            if (dirPath && dirPath.length > 0) {
-              directoryPath = dirPath;
-            }
-          } else {
-            sourceName = "unknown";
-          }
-        } else if (sourceType === "journald") {
-          sourceName =
-            logData.log_attributes?.unit ||
-            logData.serviceName ||
-            logData.service_name ||
-            logData.service ||
-            "unknown";
-        } else {
-          sourceName =
-            logData.serviceName ||
-            logData.service_name ||
-            logData.service ||
-            "unknown";
-        }
-
-        const newLog: Log = {
-          id: logData.id || `log-${Date.now()}`,
-          timestamp: formattedTime,
-          level: (
-            logData.severity_text ||
-            logData.level ||
-            "INFO"
-          ).toUpperCase() as LogLevel,
-          method: attrs?.method || "",
-          status: attrs?.status || "",
-          ipAddress: attrs?.ip || "",
-          source: sourceName,
-          filePath: directoryPath,
-          message: logData.body || logData.message || "",
-          sourceType,
-          container: attrs?.container,
-          log_attributes: attrs as LogAttributes,
-          requestData: attrs
-            ? {
-                headers: attrs.headers,
-                body: attrs.body,
-                query: attrs.query,
-                duration: attrs.duration,
-              }
-            : undefined,
+        ws.onopen = () => {
+          console.log("WebSocket connected");
         };
 
-        setLogs((prev) => {
-          const updated = [newLog, ...prev].slice(0, 1000);
-          return updated;
-        });
+        ws.onmessage = (event) => {
+          try {
+            const logData = JSON.parse(event.data);
+            console.log("WebSocket received log:", logData);
+
+            const timestamp =
+              logData.time_unix_nano ||
+              logData.timeUnixNano ||
+              logData.time ||
+              logData.timestamp;
+            let formattedTime = "Invalid Date";
+            console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
+
+            try {
+              let date: Date;
+
+              if (typeof timestamp === "string" && /^\d+$/.test(timestamp)) {
+                const nanos = BigInt(timestamp);
+                const millis = Number(nanos / BigInt(1000000));
+                date = new Date(millis);
+                console.log("Parsed nanoseconds:", timestamp, "-> Date:", date);
+              } else if (timestamp) {
+                date = new Date(timestamp);
+                console.log("Parsed ISO/other:", timestamp, "-> Date:", date);
+              } else {
+                console.error("No timestamp found in log data");
+                date = new Date();
+              }
+
+              if (!Number.isNaN(date.getTime())) {
+                formattedTime = `${date.toLocaleTimeString("en-US", {
+                  hour12: false,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}.${date.getMilliseconds().toString().padStart(3, "0")}`;
+                console.log("Formatted time:", formattedTime);
+              } else {
+                console.error("Invalid date after parsing:", date);
+              }
+            } catch (e) {
+              console.error("Error parsing timestamp:", timestamp, e);
+            }
+
+            const attrs = logData.logAttributes || logData.log_attributes;
+            const sourceType = attrs?.source_type || "unknown";
+
+            let sourceName = "unknown";
+            let directoryPath: string | undefined;
+
+            if (sourceType === "docker") {
+              sourceName =
+                attrs?.container ||
+                logData.serviceName ||
+                logData.service_name ||
+                logData.service ||
+                "unknown";
+            } else if (sourceType === "file") {
+              const fullPath =
+                attrs?.file_path ||
+                logData.serviceName ||
+                logData.service_name ||
+                logData.service;
+              if (fullPath) {
+                const parts = fullPath.split("/");
+                const filename = parts.pop() || fullPath;
+                sourceName = filename;
+
+                const dirPath = parts.join("/");
+                if (dirPath && dirPath.length > 0) {
+                  directoryPath = dirPath;
+                }
+              } else {
+                sourceName = "unknown";
+              }
+            } else if (sourceType === "journald") {
+              sourceName =
+                logData.log_attributes?.unit ||
+                logData.serviceName ||
+                logData.service_name ||
+                logData.service ||
+                "unknown";
+            } else {
+              sourceName =
+                logData.serviceName ||
+                logData.service_name ||
+                logData.service ||
+                "unknown";
+            }
+
+            const newLog: Log = {
+              id: logData.id || `log-${Date.now()}`,
+              timestamp: formattedTime,
+              level: (
+                logData.severity_text ||
+                logData.level ||
+                "INFO"
+              ).toUpperCase() as LogLevel,
+              method: attrs?.method || "",
+              status: attrs?.status || "",
+              ipAddress: attrs?.ip || "",
+              source: sourceName,
+              filePath: directoryPath,
+              message: logData.body || logData.message || "",
+              sourceType,
+              container: attrs?.container,
+              log_attributes: attrs as LogAttributes,
+              requestData: attrs
+                ? {
+                    headers: attrs.headers,
+                    body: attrs.body,
+                    query: attrs.query,
+                    duration: attrs.duration,
+                  }
+                : undefined,
+            };
+
+            setLogs((prev) => {
+              const updated = [newLog, ...prev].slice(0, 1000);
+              return updated;
+            });
+          } catch (error) {
+            console.error("Error parsing log message:", error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket disconnected");
+        };
       } catch (error) {
-        console.error("Error parsing log message:", error);
+        console.error("Failed to connect WebSocket:", error);
       }
     };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket disconnected");
-    };
+    connectWebSocket();
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
       }
     };
   }, [isLiveStreaming, currentService]);

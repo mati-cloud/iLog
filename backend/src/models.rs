@@ -42,6 +42,7 @@ pub struct LogQuery {
     pub end_time: Option<DateTime<Utc>>,
     pub limit: Option<i64>,
     pub search: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
