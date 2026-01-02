@@ -23,6 +23,7 @@ semantic-release:
     - git remote set-url origin https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.mati.cloud/ilog/ilog.git
     - npm install
   script:
+    - git tag -d $(git tag -l) || true
     - npx semantic-release
   only:
     - main
