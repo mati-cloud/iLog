@@ -1,6 +1,7 @@
 stages:
   - build
   - manifest
+  - release
 
 variables:
   DOCKER_BUILDKIT: 1
@@ -8,6 +9,8 @@ variables:
   # GitHub Container Registry
   GHCR_REGISTRY: ghcr.io
   GHCR_IMAGE: $GHCR_REGISTRY/mati-cloud/ilog
+  # GitHub Repository
+  GITHUB_REPO: mati-cloud/ilog
 
 # Frontend builds
 build:frontend:amd64:
@@ -173,3 +176,168 @@ manifest:backend:
       docker manifest push $IMAGE_NAME:latest
   only:
     - main
+
+# ilog-agent binary builds
+build:agent:linux-amd64:
+  stage: build
+  image: rust:1.83-alpine
+  tags:
+    - amd64
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+    RUSTFLAGS: "-C target-feature=+crt-static"
+  cache:
+    key: agent-linux-amd64
+    paths:
+      - .cargo/
+      - ilog-agent/target/
+  before_script:
+    - apk add --no-cache musl-dev
+  script:
+    - cd ilog-agent
+    - cargo build --release --target x86_64-unknown-linux-musl --features all
+    - mkdir -p ../artifacts
+    - cp target/x86_64-unknown-linux-musl/release/ilog-agent ../artifacts/ilog-agent-linux-amd64
+    - chmod +x ../artifacts/ilog-agent-linux-amd64
+  artifacts:
+    paths:
+      - artifacts/ilog-agent-linux-amd64
+    expire_in: 1 day
+  only:
+    - tags
+
+build:agent:linux-arm64:
+  stage: build
+  image: rust:1.83-alpine
+  tags:
+    - arm64
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+    RUSTFLAGS: "-C target-feature=+crt-static"
+  cache:
+    key: agent-linux-arm64
+    paths:
+      - .cargo/
+      - ilog-agent/target/
+  before_script:
+    - apk add --no-cache musl-dev
+  script:
+    - cd ilog-agent
+    - cargo build --release --target aarch64-unknown-linux-musl --features all
+    - mkdir -p ../artifacts
+    - cp target/aarch64-unknown-linux-musl/release/ilog-agent ../artifacts/ilog-agent-linux-arm64
+    - chmod +x ../artifacts/ilog-agent-linux-arm64
+  artifacts:
+    paths:
+      - artifacts/ilog-agent-linux-arm64
+    expire_in: 1 day
+  only:
+    - tags
+
+build:agent:macos-amd64:
+  stage: build
+  image: rust:1.83
+  tags:
+    - amd64
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  cache:
+    key: agent-macos-amd64
+    paths:
+      - .cargo/
+      - ilog-agent/target/
+  before_script:
+    - rustup target add x86_64-apple-darwin
+    - apt-get update && apt-get install -y clang gcc-multilib
+  script:
+    - cd ilog-agent
+    - cargo build --release --target x86_64-apple-darwin --features all
+    - mkdir -p ../artifacts
+    - cp target/x86_64-apple-darwin/release/ilog-agent ../artifacts/ilog-agent-darwin-amd64
+    - chmod +x ../artifacts/ilog-agent-darwin-amd64
+  artifacts:
+    paths:
+      - artifacts/ilog-agent-darwin-amd64
+    expire_in: 1 day
+  only:
+    - tags
+  allow_failure: true
+
+build:agent:macos-arm64:
+  stage: build
+  image: rust:1.83
+  tags:
+    - arm64
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  cache:
+    key: agent-macos-arm64
+    paths:
+      - .cargo/
+      - ilog-agent/target/
+  before_script:
+    - rustup target add aarch64-apple-darwin
+    - apt-get update && apt-get install -y clang
+  script:
+    - cd ilog-agent
+    - cargo build --release --target aarch64-apple-darwin --features all
+    - mkdir -p ../artifacts
+    - cp target/aarch64-apple-darwin/release/ilog-agent ../artifacts/ilog-agent-darwin-arm64
+    - chmod +x ../artifacts/ilog-agent-darwin-arm64
+  artifacts:
+    paths:
+      - artifacts/ilog-agent-darwin-arm64
+    expire_in: 1 day
+  only:
+    - tags
+  allow_failure: true
+
+# GitHub Release
+release:github:
+  stage: release
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      # Extract version from tag
+      VERSION=${CI_COMMIT_TAG#v}
+      
+      # Create release
+      RELEASE_DATA=$(cat <<EOF
+      {
+        "tag_name": "$CI_COMMIT_TAG",
+        "name": "iLog Agent $VERSION",
+        "body": "Release $VERSION\n\n## Installation\n\n### Linux (amd64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### Linux (arm64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### macOS (Intel)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-darwin-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### macOS (Apple Silicon)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-darwin-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`",
+        "draft": false,
+        "prerelease": false
+      }
+      EOF
+      )
+      
+      RELEASE_RESPONSE=$(curl -X POST \
+        -H "Authorization: token $GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github.v3+json" \
+        https://api.github.com/repos/$GITHUB_REPO/releases \
+        -d "$RELEASE_DATA")
+      
+      RELEASE_ID=$(echo $RELEASE_RESPONSE | jq -r '.id')
+      echo "Created release with ID: $RELEASE_ID"
+      
+      # Upload binaries
+      for binary in artifacts/*; do
+        if [ -f "$binary" ]; then
+          FILENAME=$(basename $binary)
+          echo "Uploading $FILENAME..."
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$binary" \
+            "https://uploads.github.com/repos/$GITHUB_REPO/releases/$RELEASE_ID/assets?name=$FILENAME"
+        fi
+      done
+  dependencies:
+    - build:agent:linux-amd64
+    - build:agent:linux-arm64
+  only:
+    - tags
