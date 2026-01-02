@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     let db_arc = Arc::new(db);
 
     let state = AppState {
-        db: db_arc,
+        db: Arc::clone(&db_arc),
         jwt_secret,
     };
 

@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use bytes::Bytes;
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Nonce,
@@ -9,7 +8,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, warn};
 
-use crate::{db::Database, models::OtelLog, otel, services};
+use crate::{db::Database, models::OtelLog, otel};
 
 const MAGIC_BYTES: &[u8; 4] = b"ILOG";
 const VERSION: u8 = 1;
