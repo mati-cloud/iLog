@@ -12,6 +12,7 @@ variables:
   GITHUB_REPO: mati-cloud/iLog
 
 # Semantic Release - Auto versioning based on conventional commits
+# Runs on every push to main branch (except tags)
 semantic-release:
   stage: semantic-release
   image: node:20-alpine
