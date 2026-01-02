@@ -2,6 +2,10 @@
 
 A centralized logging software solution for collecting, processing, and visualizing logs.
 
+## Installation
+
+See the [Releases](https://github.com/mati-cloud/iLog/releases) page for pre-built binaries and Docker images.
+
 ## Environment Variables (`.env.dist`)
 
 ### Frontend
