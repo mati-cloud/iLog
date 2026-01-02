@@ -23,7 +23,12 @@ semantic-release:
     - git remote set-url origin https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.mati.cloud/ilog/ilog.git
     - npm install
   script:
-    - git tag -d $(git tag -l) || true
+    - |
+      # Delete all tags from GitLab remote to prevent mirror race condition
+      for tag in $(git ls-remote --tags origin | awk '{print $2}' | sed 's|refs/tags/||'); do
+        git push origin :refs/tags/$tag || true
+      done
+    - git fetch --prune --prune-tags origin
     - npx semantic-release
     - git push origin --tags
   only:
