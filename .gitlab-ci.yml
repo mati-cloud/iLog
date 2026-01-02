@@ -247,7 +247,7 @@ release:github:
       RELEASE_DATA=$(cat <<EOF
       {
         "tag_name": "$CI_COMMIT_TAG",
-        "name": "iLog Agent $VERSION",
+        "name": "iLog Agent v$VERSION",
         "body": "Release $VERSION\n\n## Installation\n\n### Linux (amd64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### Linux (arm64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`",
         "draft": false,
         "prerelease": false

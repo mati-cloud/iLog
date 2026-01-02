@@ -4,6 +4,7 @@ mod models;
 mod otel;
 mod services;
 mod streaming;
+mod tcp_server;
 
 use axum::{
     extract::{Query, State, WebSocketUpgrade},
@@ -95,13 +96,28 @@ async fn main() -> anyhow::Result<()> {
         .with_state(state);
 
     let _host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = std::env::var("SERVER_PORT")
+    let http_port = std::env::var("SERVER_PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse::<u16>()?;
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let tcp_port = std::env::var("TCP_PORT")
+        .unwrap_or_else(|_| "8081".to_string())
+        .parse::<u16>()?;
 
-    info!("Server listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
+    let tcp_addr = SocketAddr::from(([0, 0, 0, 0], tcp_port));
+
+    // Spawn TCP server for agent connections
+    let tcp_db = Arc::clone(&db_arc);
+    tokio::spawn(async move {
+        if let Err(e) = tcp_server::start_tcp_server(tcp_addr, tcp_db).await {
+            tracing::error!("TCP server error: {}", e);
+        }
+    });
+
+    info!("HTTP server listening on {}", http_addr);
+    info!("TCP server listening on {} (for agents)", tcp_addr);
+    
+    let listener = tokio::net::TcpListener::bind(http_addr).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
