@@ -25,6 +25,7 @@ semantic-release:
   script:
     - git tag -d $(git tag -l) || true
     - npx semantic-release
+    - git push origin --tags
   only:
     - main
   except:
