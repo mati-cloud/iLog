@@ -234,64 +234,6 @@ build:agent:linux-arm64:
   only:
     - tags
 
-build:agent:macos-amd64:
-  stage: build
-  image: rust:1.83
-  tags:
-    - amd64
-  variables:
-    CARGO_HOME: $CI_PROJECT_DIR/.cargo
-  cache:
-    key: agent-macos-amd64
-    paths:
-      - .cargo/
-      - ilog-agent/target/
-  before_script:
-    - rustup target add x86_64-apple-darwin
-    - apt-get update && apt-get install -y clang gcc-multilib
-  script:
-    - cd ilog-agent
-    - cargo build --release --target x86_64-apple-darwin --features all
-    - mkdir -p ../artifacts
-    - cp target/x86_64-apple-darwin/release/ilog-agent ../artifacts/ilog-agent-darwin-amd64
-    - chmod +x ../artifacts/ilog-agent-darwin-amd64
-  artifacts:
-    paths:
-      - artifacts/ilog-agent-darwin-amd64
-    expire_in: 1 day
-  only:
-    - tags
-  allow_failure: true
-
-build:agent:macos-arm64:
-  stage: build
-  image: rust:1.83
-  tags:
-    - arm64
-  variables:
-    CARGO_HOME: $CI_PROJECT_DIR/.cargo
-  cache:
-    key: agent-macos-arm64
-    paths:
-      - .cargo/
-      - ilog-agent/target/
-  before_script:
-    - rustup target add aarch64-apple-darwin
-    - apt-get update && apt-get install -y clang
-  script:
-    - cd ilog-agent
-    - cargo build --release --target aarch64-apple-darwin --features all
-    - mkdir -p ../artifacts
-    - cp target/aarch64-apple-darwin/release/ilog-agent ../artifacts/ilog-agent-darwin-arm64
-    - chmod +x ../artifacts/ilog-agent-darwin-arm64
-  artifacts:
-    paths:
-      - artifacts/ilog-agent-darwin-arm64
-    expire_in: 1 day
-  only:
-    - tags
-  allow_failure: true
-
 # GitHub Release
 release:github:
   stage: release
@@ -308,7 +250,7 @@ release:github:
       {
         "tag_name": "$CI_COMMIT_TAG",
         "name": "iLog Agent $VERSION",
-        "body": "Release $VERSION\n\n## Installation\n\n### Linux (amd64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### Linux (arm64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### macOS (Intel)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-darwin-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### macOS (Apple Silicon)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-darwin-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`",
+        "body": "Release $VERSION\n\n## Installation\n\n### Linux (amd64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-amd64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`\n\n### Linux (arm64)\n\`\`\`bash\ncurl -L https://github.com/$GITHUB_REPO/releases/download/$CI_COMMIT_TAG/ilog-agent-linux-arm64 -o ilog-agent\nchmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n\`\`\`",
         "draft": false,
         "prerelease": false
       }
