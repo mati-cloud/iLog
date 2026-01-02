@@ -8,7 +8,7 @@ use tracing::{info, error, warn};
 use notify::{Watcher, RecursiveMode, EventKind};
 
 use crate::config::AgentConfig;
-use crate::sender::LogEntry;
+use crate::tcp_sender::LogEntry;
 use super::LogProvider;
 
 pub struct FileProvider {

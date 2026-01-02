@@ -1,6 +1,6 @@
 use tokio::sync::mpsc;
 use anyhow::Result;
-use crate::sender::LogEntry;
+use crate::tcp_sender::LogEntry;
 
 /// Provider trait - each log source implements this
 #[async_trait::async_trait]

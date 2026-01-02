@@ -1,5 +1,4 @@
 mod config;
-mod sender;
 mod tcp_sender;
 mod crypto;
 mod protocol;
@@ -14,7 +13,6 @@ use tracing::{error, info};
 use tracing_subscriber;
 
 use config::AgentConfig;
-use sender::LogSender;
 use tcp_sender::TcpLogSender;
 use providers::LogProvider;
 
@@ -48,16 +46,8 @@ async fn main() -> Result<()> {
                 TcpLogSender::start(config_clone, rx).await
             }
             "http" => {
-                #[cfg(feature = "http")]
-                {
-                    info!("Using HTTP protocol");
-                    LogSender::start(config_clone, rx).await
-                }
-                #[cfg(not(feature = "http"))]
-                {
-                    error!("HTTP protocol requested but 'http' feature not enabled");
-                    Err(anyhow::anyhow!("HTTP feature not enabled"))
-                }
+                error!("HTTP protocol is deprecated, use TCP instead");
+                Err(anyhow::anyhow!("HTTP protocol is deprecated"))
             }
             proto => {
                 error!("Unknown protocol: {}", proto);

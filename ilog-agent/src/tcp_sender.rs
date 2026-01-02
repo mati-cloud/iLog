@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 use crate::config::AgentConfig;
 use crate::crypto::Encryptor;
-use crate::protocol::{Frame, FrameType};
+use crate::protocol::Frame;
 
 #[derive(Debug, Clone)]
 pub struct LogEntry {
@@ -97,6 +97,7 @@ impl TcpLogSender {
         let json_payload = self.serialize_logs(&self.buffer);
         let compressed = self.compress(&json_payload)?;
         let encrypted = self.encryptor.encrypt(&compressed)?;
+        let encrypted_len = encrypted.len();
 
         let frame = Frame::log_batch(encrypted);
 
@@ -111,7 +112,7 @@ impl TcpLogSender {
                             info!("Successfully sent {} logs ({} bytes compressed, {} bytes encrypted)",
                                 self.buffer.len(),
                                 compressed.len(),
-                                encrypted.len()
+                                encrypted_len
                             );
                             self.buffer.clear();
                             return Ok(());

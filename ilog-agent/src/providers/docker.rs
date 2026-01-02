@@ -1,5 +1,6 @@
 use tokio::sync::mpsc;
 use anyhow::{Result, Context};
+use async_trait::async_trait;
 use std::sync::Arc;
 use bollard::{Docker, container::LogsOptions};
 use bollard::container::LogOutput;
@@ -8,7 +9,7 @@ use tracing::{info, error, warn};
 use regex::Regex;
 
 use crate::config::AgentConfig;
-use crate::sender::LogEntry;
+use crate::tcp_sender::LogEntry;
 use super::LogProvider;
 
 pub struct DockerProvider {

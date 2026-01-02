@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::{info, error, warn};
 
 use crate::config::AgentConfig;
-use crate::sender::LogEntry;
+use crate::tcp_sender::LogEntry;
 use super::LogProvider;
 
 pub struct SystemdProvider {

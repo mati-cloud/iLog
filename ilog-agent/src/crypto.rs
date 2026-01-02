@@ -2,7 +2,7 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rand::RngCore;
 
 const NONCE_SIZE: usize = 12;
@@ -48,7 +48,7 @@ impl Encryptor {
         let ciphertext = self
             .cipher
             .encrypt(nonce, plaintext)
-            .context("Encryption failed")?;
+            .map_err(|_| anyhow::anyhow!("Encryption failed"))?;
 
         let mut result = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
         result.extend_from_slice(&nonce_bytes);
@@ -68,7 +68,7 @@ impl Encryptor {
         let plaintext = self
             .cipher
             .decrypt(nonce, ciphertext)
-            .context("Decryption failed")?;
+            .map_err(|_| anyhow::anyhow!("Decryption failed"))?;
 
         Ok(plaintext)
     }
