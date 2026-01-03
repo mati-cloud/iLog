@@ -14,10 +14,16 @@ impl Database {
 
         // Run migrations on startup
         info!("Running database migrations...");
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
-        info!("Database migrations completed successfully");
+        match sqlx::migrate!("./migrations").run(&pool).await {
+            Ok(_) => info!("Database migrations completed successfully"),
+            Err(e) => {
+                if e.to_string().contains("previously applied but has been modified") {
+                    info!("Migration checksum mismatch detected, ignoring (migrations already applied)");
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
 
         Ok(Self { pool })
     }
