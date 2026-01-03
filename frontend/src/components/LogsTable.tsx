@@ -203,7 +203,10 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
         const jwtTokenResponse = await token();
         console.log("Token response:", jwtTokenResponse);
         
-        if (!jwtTokenResponse || 'error' in jwtTokenResponse) {
+        // Check if we have a valid token in the response
+        const jwtToken = (jwtTokenResponse as any)?.data?.token;
+        
+        if (!jwtToken) {
           console.error("No JWT token available for WebSocket connection", jwtTokenResponse);
           // Fallback: try to get session token from cookies
           const cookies = document.cookie.split(';');
@@ -215,18 +218,13 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
             console.log("Connecting to WebSocket with session token");
             const fallbackWs = new WebSocket(fallbackWsUrl);
             wsRef.current = fallbackWs;
-            // Continue to set up handlers below
           } else {
             console.error("No session token found in cookies either");
             return;
           }
         } else {
-          const jwtToken = (jwtTokenResponse as any).data?.token;
-          if (!jwtToken) {
-            console.error("Token data is missing");
-            return;
-          }
-          
+          // Use JWT token
+          console.log("Using JWT token for WebSocket");
           const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${jwtToken}`;
           console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, 'token=***'));
 
