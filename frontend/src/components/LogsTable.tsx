@@ -246,11 +246,12 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
             console.log("WebSocket received log:", logData);
 
             const timestamp =
-              logData.time_unix_nano ||
               logData.timeUnixNano ||
+              logData.time_unix_nano ||
               logData.time ||
               logData.timestamp;
-            let formattedTime = "Invalid Date";
+            let formattedTime = "-";
+            console.log("WebSocket log data:", logData);
             console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
 
             try {
@@ -343,7 +344,7 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
               ipAddress: attrs?.ip || "",
               source: sourceName,
               filePath: directoryPath,
-              message: logData.body || logData.message || "",
+              message: logData.body || logData.message || logData.Body || "",
               sourceType,
               container: attrs?.container,
               log_attributes: attrs as LogAttributes,
