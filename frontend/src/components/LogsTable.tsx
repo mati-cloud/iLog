@@ -336,7 +336,7 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
             }
 
             const newLog: Log = {
-              id: logData.id || `log-${Date.now()}`,
+              id: logData.id || `log-${Date.now()}-${messageCount}`,
               timestamp: formattedTime,
               level: (
                 logData.severity_text ||
