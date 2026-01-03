@@ -154,6 +154,8 @@ async fn watch_container(
                     _ => continue,
                 };
 
+                info!("Raw log from {}: {}", container_name, log_text.trim());
+
                 let log_text = strip_ansi_codes(&log_text);
                 let log_text = log_text.trim();
                 
