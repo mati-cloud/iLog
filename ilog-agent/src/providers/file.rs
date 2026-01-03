@@ -70,6 +70,7 @@ impl FileProvider {
         loop {
             // Wait for file change notification
             let _ = watch_rx.recv().await;
+            info!("File change detected: {}", path.display());
             
             // Read all available complete lines
             let mut line = String::new();
@@ -94,6 +95,8 @@ impl FileProvider {
                     continue;
                 }
                 
+                info!("Read line from {}: {}", path.display(), log_text.chars().take(100).collect::<String>());
+                
                 let entry = LogEntry {
                     timestamp: chrono::Utc::now(),
                     level: "INFO".to_string(),
@@ -108,9 +111,12 @@ impl FileProvider {
                     })),
                 };
                 
+                info!("Sending log entry to channel from file: {}", path.display());
                 if let Err(e) = tx.send(entry).await {
                     error!("Failed to send log entry: {}", e);
                     return Ok(());
+                } else {
+                    info!("Log entry sent successfully");
                 }
             }
         }

@@ -50,26 +50,39 @@ impl TcpLogSender {
         loop {
             tokio::select! {
                 Some(log) = rx.recv() => {
+                    info!("Received log entry: {} - {}", log.service, log.message.chars().take(100).collect::<String>());
                     sender.buffer.push(log);
                     
                     tokio::time::sleep(micro_batch_delay).await;
                     
                     while let Ok(log) = rx.try_recv() {
+                        info!("Received additional log entry: {} - {}", log.service, log.message.chars().take(100).collect::<String>());
                         sender.buffer.push(log);
                         if sender.buffer.len() >= 50 {
                             break;
                         }
                     }
                     
+                    info!("Buffered {} logs, flushing...", sender.buffer.len());
+                    
                     if let Err(e) = sender.flush().await {
                         error!("Failed to flush logs: {}", e);
-                        sender.stream = None;
+                        if sender.stream.is_some() {
+                            warn!("✗ Disconnected from backend server: {}", sender.config.agent.server);
+                            sender.stream = None;
+                        }
                     }
                 }
                 _ = heartbeat_interval.tick() => {
+                    info!("Sending heartbeat to server");
                     if let Err(e) = sender.send_heartbeat().await {
                         warn!("Failed to send heartbeat: {}", e);
-                        sender.stream = None;
+                        if sender.stream.is_some() {
+                            warn!("✗ Disconnected from backend server: {}", sender.config.agent.server);
+                            sender.stream = None;
+                        }
+                    } else {
+                        info!("Heartbeat sent successfully");
                     }
                 }
             }
@@ -83,7 +96,7 @@ impl TcpLogSender {
                 .await
                 .context("Failed to connect to server")?;
             stream.set_nodelay(true)?;
-            info!("Connected to {}", self.config.agent.server);
+            info!("✓ Connection established with backend server: {}", self.config.agent.server);
             self.stream = Some(stream);
         }
         Ok(self.stream.as_mut().unwrap())

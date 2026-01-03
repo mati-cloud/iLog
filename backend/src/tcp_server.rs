@@ -155,11 +155,13 @@ impl Decryptor {
 
 async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
     let peer_addr = stream.peer_addr().ok();
-    info!("New agent connection from {:?}", peer_addr);
+    info!("✓ Agent connection established from {:?}", peer_addr);
 
     loop {
+        info!("Waiting for frame from {:?}", peer_addr);
         match Frame::read_from(&mut stream).await {
             Ok(frame) => {
+                info!("Received frame type {:?} with {} bytes payload from {:?}", frame.frame_type, frame.payload.len(), peer_addr);
                 match frame.frame_type {
                     FrameType::LogBatch => {
                         match process_log_batch(&frame.payload, &db).await {
@@ -179,9 +181,12 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
                         }
                     }
                     FrameType::Heartbeat => {
+                        info!("Received heartbeat from {:?}", peer_addr);
                         if let Err(e) = Frame::ack().write_to(&mut stream).await {
                             error!("Failed to send heartbeat ACK: {}", e);
                             break;
+                        } else {
+                            info!("Sent heartbeat ACK to {:?}", peer_addr);
                         }
                     }
                     FrameType::Ack => {
@@ -191,14 +196,16 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
             }
             Err(e) => {
                 if e.to_string().contains("UnexpectedEof") || e.to_string().contains("Connection reset") {
-                    info!("Client {:?} disconnected", peer_addr);
+                    info!("✗ Agent disconnected gracefully: {:?}", peer_addr);
                 } else {
-                    error!("Error reading frame from {:?}: {}", peer_addr, e);
+                    error!("✗ Agent disconnected with error from {:?}: {}", peer_addr, e);
                 }
                 break;
             }
         }
     }
+
+    info!("✗ Connection closed for agent: {:?}", peer_addr);
 }
 
 async fn process_log_batch(
