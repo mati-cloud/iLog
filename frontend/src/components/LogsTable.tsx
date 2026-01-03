@@ -240,10 +240,15 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
           console.log("WebSocket connected");
         };
 
+        let messageCount = 0;
         ws.onmessage = (event) => {
+          messageCount++;
+          console.log(`WebSocket message #${messageCount} received`);
           try {
             const logData = JSON.parse(event.data);
-            console.log("WebSocket received log:", logData);
+            if (messageCount <= 3) {
+              console.log("WebSocket received log:", logData);
+            }
 
             const timestamp =
               logData.timeUnixNano ||
@@ -363,16 +368,19 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
               return updated;
             });
           } catch (error) {
-            console.error("Error parsing log message:", error);
+            console.error(`Error parsing log message #${messageCount}:`, error, event.data);
           }
         };
+        
+        console.log("Total messages received:", messageCount);
 
         ws.onerror = (error) => {
           console.error("WebSocket error:", error);
         };
 
-        ws.onclose = () => {
-          console.log("WebSocket disconnected");
+        ws.onclose = (event) => {
+          console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason, "Clean:", event.wasClean);
+          console.log(`Total messages received before close: ${messageCount}`);
         };
       } catch (error) {
         console.error("Failed to connect WebSocket:", error);
