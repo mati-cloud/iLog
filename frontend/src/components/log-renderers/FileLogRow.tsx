@@ -180,8 +180,8 @@ export function FileLogRow({
       {isExpanded && (
         <TableRow>
           <TableCell colSpan={6} className="bg-muted/30 p-0">
-            <div className="px-4 pb-4 pt-1 animate-in slide-in-from-top-1 duration-200">
-              <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <div className="animate-in slide-in-from-top-1 duration-200">
+              <div className="overflow-hidden">
                 {/* Context Section */}
                 <div className="grid grid-cols-2 gap-px bg-border">
                   <div className="bg-card p-3">
