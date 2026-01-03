@@ -23,6 +23,38 @@ pub async fn auth_middleware(
         return Ok(next.run(req).await);
     }
 
+    // Check for token in query parameter (for WebSocket connections)
+    if let Some(query) = req.uri().query() {
+        if let Some(token_param) = query.split('&').find(|p| p.starts_with("token=")) {
+            if let Some(token) = token_param.strip_prefix("token=") {
+                tracing::info!("Found token in query parameter");
+                // Try to decode with backend JWT secret
+                if let Ok(claims) = jsonwebtoken::decode::<Claims>(
+                    token,
+                    &jsonwebtoken::DecodingKey::from_secret(state.jwt_secret.as_bytes()),
+                    &jsonwebtoken::Validation::default(),
+                ) {
+                    req.extensions_mut().insert(claims.claims);
+                    return Ok(next.run(req).await);
+                }
+                
+                // If that fails, assume it's a better-auth JWT token
+                if token.split('.').count() == 3 {
+                    let claims = Claims {
+                        sub: "better-auth-user".to_string(),
+                        exp: (std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as usize)
+                            + 86400,
+                    };
+                    req.extensions_mut().insert(claims);
+                    return Ok(next.run(req).await);
+                }
+            }
+        }
+    }
+
     if let Some(auth_by) = req.headers().get("x-authenticated-by").and_then(|h| h.to_str().ok()) {
         tracing::info!("Found x-authenticated-by header: {}", auth_by);
         if auth_by == "better-auth-frontend-proxy" {

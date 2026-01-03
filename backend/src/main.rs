@@ -77,7 +77,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/logs", post(ingest_logs))
         .layer(
             CorsLayer::new()
-                .allow_origin("http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap())
+                .allow_origin([
+                    "http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap(),
+                    "https://ilog.mati.cloud".parse::<axum::http::HeaderValue>().unwrap(),
+                ])
                 .allow_methods([
                     Method::GET,
                     Method::POST,
