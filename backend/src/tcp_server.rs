@@ -252,8 +252,8 @@ async fn process_log_batch(
         .execute(db.pool())
         .await;
 
-    // Decompress
-    let json_bytes = lz4_flex::decompress_size_prepended(&compressed)
+    // Decompress (agent uses raw block compression without size prefix)
+    let json_bytes = lz4_flex::block::decompress(&compressed, 10 * 1024 * 1024)
         .context("Failed to decompress log batch")?;
 
     // Deserialize
