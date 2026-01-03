@@ -102,3 +102,15 @@ pub struct AgentClaims {
     pub service_id: Uuid,
     pub agent_id: Uuid,
 }
+
+// Safe agent response that excludes the token
+#[derive(Debug, Serialize, Clone)]
+pub struct AgentResponse {
+    pub id: Uuid,
+    pub service_id: Uuid,
+    pub name: String,
+    pub source_type: String,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}

@@ -12,7 +12,7 @@ use uuid::Uuid;
 use sha2::{Sha256, Digest};
 
 use crate::{
-    models::{Claims, CreateService, CreateAgent, Service, Agent, AgentClaims, UpdateService},
+    models::{Claims, CreateService, CreateAgent, Service, Agent, AgentClaims, AgentResponse, UpdateService},
     AppState,
 };
 
@@ -321,7 +321,21 @@ pub async fn list_agents(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(agents))
+    // Convert to safe response that excludes tokens
+    let safe_agents: Vec<AgentResponse> = agents
+        .into_iter()
+        .map(|agent| AgentResponse {
+            id: agent.id,
+            service_id: agent.service_id,
+            name: agent.name,
+            source_type: agent.source_type,
+            expires_at: agent.expires_at,
+            last_used_at: agent.last_used_at,
+            created_at: agent.created_at,
+        })
+        .collect();
+
+    Ok(Json(safe_agents))
 }
 
 // Revoke agent
