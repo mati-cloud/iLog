@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { serverConfig } from "@/lib/server-config";
 
 async function proxyRequest(request: NextRequest, path: string[]) {
+  console.log("[Proxy] Request to:", path);
   const incomingHeaders = await headers();
 
   const session = await auth.api.getSession({
@@ -11,11 +12,14 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   });
 
   if (!session) {
+    console.log("[Proxy] No session, returning 401");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  console.log("[Proxy] Session found for user:", session.user.email);
   const backendPath = path.join("/");
   const url = new URL(`/api/${backendPath}`, serverConfig.backendUrl);
+  console.log("[Proxy] Backend URL:", url.toString());
 
   request.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.append(key, value);
@@ -57,40 +61,46 @@ async function proxyRequest(request: NextRequest, path: string[]) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await params;
-  return proxyRequest(request, path);
+  try {
+    const { path } = await context.params;
+    console.log("[GET] Params resolved:", path);
+    return proxyRequest(request, path);
+  } catch (error) {
+    console.error("[GET] Error resolving params:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await params;
+  const { path } = await context.params;
   return proxyRequest(request, path);
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await params;
+  const { path } = await context.params;
   return proxyRequest(request, path);
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await params;
+  const { path } = await context.params;
   return proxyRequest(request, path);
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await params;
+  const { path } = await context.params;
   return proxyRequest(request, path);
 }
