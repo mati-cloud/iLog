@@ -1,12 +1,12 @@
 import { detectLogSourceType } from "@/lib/log-utils";
-import type { RawLogData } from "@/types/log";
+import type { Log } from "@/types/log";
 import { DockerLogRow } from "./DockerLogRow";
 import { FileLogRow } from "./FileLogRow";
 import { HttpLogRow } from "./HttpLogRow";
 import { JournaldLogRow } from "./JournaldLogRow";
 
 interface LogRowProps {
-  log: RawLogData;
+  log: Log;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }
