@@ -868,6 +868,8 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
         <TableVirtuoso
           data={filteredLogs}
           overscan={200}
+          followOutput="smooth"
+          initialTopMostItemIndex={filteredLogs.length - 1}
           components={{
             Table: ({ style, ...props }) => (
               <table
@@ -893,86 +895,21 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
           fixedHeaderContent={() => (
             <LogTableHeaders sourceType={predominantSourceType} />
           )}
-          itemContent={(index, log) => {
-            const isExpanded = expandedRows.has(log.id);
-            return (
-              <>
-                <LogRow
-                  log={log}
-                  isExpanded={isExpanded}
-                  onToggleExpand={() => {
-                    const newExpanded = new Set(expandedRows);
-                    if (newExpanded.has(log.id)) {
-                      newExpanded.delete(log.id);
-                    } else {
-                      newExpanded.add(log.id);
-                    }
-                    setExpandedRows(newExpanded);
-                  }}
-                />
-                {isExpanded && (
-                  <tr>
-                    <td colSpan={6} className="bg-muted/30 p-0">
-                      <div className="animate-in slide-in-from-top-1 duration-200">
-                        <div className="overflow-hidden">
-                          {/* Context Section */}
-                          <div className="grid grid-cols-2 gap-px bg-border">
-                            <div className="bg-card p-3">
-                              <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
-                                <Server className="w-3 h-3" />
-                                <span className="text-[10px] uppercase tracking-wider font-medium">Source</span>
-                              </div>
-                              <p className="text-xs font-mono text-foreground">
-                                {log.filePath ? `${log.filePath}/${log.source}` : log.source}
-                              </p>
-                            </div>
-                            <div className="bg-card p-3">
-                              <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
-                                <Clock className="w-3 h-3" />
-                                <span className="text-[10px] uppercase tracking-wider font-medium">Timestamp</span>
-                              </div>
-                              <p className="text-xs font-mono text-foreground">{log.timestamp}</p>
-                            </div>
-                          </div>
-                          
-                          {/* Full Message */}
-                          <div className="p-3 border-t border-border">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <FileText className="w-3 h-3" />
-                                <span className="text-[10px] uppercase tracking-wider font-medium">Message</span>
-                              </div>
-                            </div>
-                            <p className="text-xs font-mono text-foreground leading-relaxed break-all">
-                              {log.message}
-                            </p>
-                          </div>
-                          
-                          {/* Metadata */}
-                          {log.log_attributes && Object.keys(log.log_attributes).length > 0 && (
-                            <div className="p-3 border-t border-border">
-                              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                                <Tag className="w-3 h-3" />
-                                <span className="text-[10px] uppercase tracking-wider font-medium">Metadata</span>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(log.log_attributes).map(([key, value]) => (
-                                  <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
-                                    <span className="text-muted-foreground">{key}:</span>
-                                    <span className="text-foreground font-mono">{String(value)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </>
-            );
-          }}
+          itemContent={(index, log) => (
+            <LogRow
+              log={log}
+              isExpanded={expandedRows.has(log.id)}
+              onToggleExpand={() => {
+                const newExpanded = new Set(expandedRows);
+                if (newExpanded.has(log.id)) {
+                  newExpanded.delete(log.id);
+                } else {
+                  newExpanded.add(log.id);
+                }
+                setExpandedRows(newExpanded);
+              }}
+            />
+          )}
         />
       </div>
     </>
