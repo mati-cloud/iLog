@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TableVirtuoso } from "react-virtuoso";
+import { Clock, FileText, Server, Tag } from "lucide-react";
 import { LogRow } from "@/components/log-renderers/LogRow";
 import { LogTableHeaders } from "@/components/log-renderers/LogTableHeaders";
 import { ServiceSelector } from "@/components/ServiceSelector";
@@ -862,28 +864,116 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <Table>
-          <LogTableHeaders sourceType={predominantSourceType} />
-          <TableBody>
-            {filteredLogs.map((log) => (
-              <LogRow
-                key={log.id}
-                log={log}
-                isExpanded={expandedRows.has(log.id)}
-                onToggleExpand={() => {
-                  const newExpanded = new Set(expandedRows);
-                  if (newExpanded.has(log.id)) {
-                    newExpanded.delete(log.id);
-                  } else {
-                    newExpanded.add(log.id);
-                  }
-                  setExpandedRows(newExpanded);
+      <div className="flex-1 overflow-hidden">
+        <TableVirtuoso
+          data={filteredLogs}
+          overscan={200}
+          components={{
+            Table: ({ style, ...props }) => (
+              <table
+                {...props}
+                style={{
+                  ...style,
+                  width: "100%",
+                  borderCollapse: "collapse",
                 }}
+                className="w-full caption-bottom text-sm"
               />
-            ))}
-          </TableBody>
-        </Table>
+            ),
+            TableHead: ({ style, ...props }) => (
+              <thead {...props} style={{ ...style }} className="[&_tr]:border-b" />
+            ),
+            TableRow: ({ item: _item, ...props }) => (
+              <tr {...props} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted" />
+            ),
+            TableBody: ({ style, ...props }) => (
+              <tbody {...props} style={{ ...style }} className="[&_tr:last-child]:border-0" />
+            ),
+          }}
+          fixedHeaderContent={() => (
+            <LogTableHeaders sourceType={predominantSourceType} />
+          )}
+          itemContent={(index, log) => {
+            const isExpanded = expandedRows.has(log.id);
+            return (
+              <>
+                <LogRow
+                  log={log}
+                  isExpanded={isExpanded}
+                  onToggleExpand={() => {
+                    const newExpanded = new Set(expandedRows);
+                    if (newExpanded.has(log.id)) {
+                      newExpanded.delete(log.id);
+                    } else {
+                      newExpanded.add(log.id);
+                    }
+                    setExpandedRows(newExpanded);
+                  }}
+                />
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={6} className="bg-muted/30 p-0">
+                      <div className="animate-in slide-in-from-top-1 duration-200">
+                        <div className="overflow-hidden">
+                          {/* Context Section */}
+                          <div className="grid grid-cols-2 gap-px bg-border">
+                            <div className="bg-card p-3">
+                              <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
+                                <Server className="w-3 h-3" />
+                                <span className="text-[10px] uppercase tracking-wider font-medium">Source</span>
+                              </div>
+                              <p className="text-xs font-mono text-foreground">
+                                {log.filePath ? `${log.filePath}/${log.source}` : log.source}
+                              </p>
+                            </div>
+                            <div className="bg-card p-3">
+                              <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
+                                <Clock className="w-3 h-3" />
+                                <span className="text-[10px] uppercase tracking-wider font-medium">Timestamp</span>
+                              </div>
+                              <p className="text-xs font-mono text-foreground">{log.timestamp}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Full Message */}
+                          <div className="p-3 border-t border-border">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <FileText className="w-3 h-3" />
+                                <span className="text-[10px] uppercase tracking-wider font-medium">Message</span>
+                              </div>
+                            </div>
+                            <p className="text-xs font-mono text-foreground leading-relaxed break-all">
+                              {log.message}
+                            </p>
+                          </div>
+                          
+                          {/* Metadata */}
+                          {log.log_attributes && Object.keys(log.log_attributes).length > 0 && (
+                            <div className="p-3 border-t border-border">
+                              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                                <Tag className="w-3 h-3" />
+                                <span className="text-[10px] uppercase tracking-wider font-medium">Metadata</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(log.log_attributes).map(([key, value]) => (
+                                  <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
+                                    <span className="text-muted-foreground">{key}:</span>
+                                    <span className="text-foreground font-mono">{String(value)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          }}
+        />
       </div>
     </>
   );
