@@ -148,8 +148,7 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
 
           // Always show selector modal when no service is selected
           const urlParams = new URLSearchParams(window.location.search);
-          const serviceId =
-            urlParams.get("service") || localStorage.getItem("lastServiceId");
+          const serviceId = urlParams.get("service");
 
           if (serviceId && data.length > 0) {
             const service = data.find(

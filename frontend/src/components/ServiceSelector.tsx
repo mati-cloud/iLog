@@ -85,7 +85,6 @@ export function ServiceSelector({
 
   const handleSelect = (serviceId: string) => {
     setSelectedService(serviceId);
-    localStorage.setItem("lastServiceId", serviceId);
 
     if (onServiceSelect) {
       onServiceSelect(serviceId);
@@ -164,7 +163,7 @@ export function ServiceSelector({
         <DialogHeader>
           <DialogTitle>Select a Service</DialogTitle>
           <DialogDescription>
-            Choose a service to view its logs. This selection is required.
+            Choose a service to view its logs.
           </DialogDescription>
         </DialogHeader>
         <Command className="rounded-lg border shadow-md">

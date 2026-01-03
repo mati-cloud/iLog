@@ -39,7 +39,11 @@ build:frontend:amd64:
         --provenance=false \
         ./frontend
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - frontend/**/*
+      - .gitlab-ci.yml
 
 build:frontend:arm64:
   stage: build
@@ -69,7 +73,11 @@ build:frontend:arm64:
         --provenance=false \
         ./frontend
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - frontend/**/*
+      - .gitlab-ci.yml
 
 # Backend builds
 build:backend:amd64:
@@ -100,7 +108,11 @@ build:backend:amd64:
         --provenance=false \
         ./backend
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - backend/**/*
+      - .gitlab-ci.yml
 
 build:backend:arm64:
   stage: build
@@ -130,7 +142,11 @@ build:backend:arm64:
         --provenance=false \
         ./backend
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - backend/**/*
+      - .gitlab-ci.yml
 
 # Create multi-arch manifests
 manifest:frontend:
@@ -152,7 +168,11 @@ manifest:frontend:
         $IMAGE_NAME:latest-arm64
       docker manifest push $IMAGE_NAME:latest
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - frontend/**/*
+      - .gitlab-ci.yml
 
 manifest:backend:
   stage: manifest
@@ -173,7 +193,11 @@ manifest:backend:
         $IMAGE_NAME:latest-arm64
       docker manifest push $IMAGE_NAME:latest
   only:
-    - main
+    refs:
+      - main
+    changes:
+      - backend/**/*
+      - .gitlab-ci.yml
 
 # ilog-agent binary builds (triggered by git tags)
 build:agent:linux-amd64:
