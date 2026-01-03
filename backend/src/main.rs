@@ -12,7 +12,7 @@ use axum::{
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
+    Extension, Json, Router,
 };
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::CorsLayer;
