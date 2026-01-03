@@ -2,6 +2,7 @@
 // This is separate from runtime-config.ts which is for browser/client-side code
 
 export const serverConfig = {
-  backendUrl: process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_URL || "http://localhost:8080",
-  wsUrl: process.env.NEXT_PUBLIC_WS_URL || process.env.WS_URL || "ws://localhost:8080",
+  // Use internal Kubernetes service for server-side requests, not the public URL
+  backendUrl: process.env.BACKEND_URL || "http://backend:8080",
+  wsUrl: process.env.WS_URL || "ws://backend:8080",
 };
