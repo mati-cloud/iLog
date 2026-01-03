@@ -256,8 +256,10 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
               logData.time ||
               logData.timestamp;
             let formattedTime = "-";
-            console.log("WebSocket log data:", logData);
-            console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
+            
+            if (messageCount <= 3) {
+              console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
+            }
 
             try {
               let date: Date;
@@ -266,10 +268,8 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
                 const nanos = BigInt(timestamp);
                 const millis = Number(nanos / BigInt(1000000));
                 date = new Date(millis);
-                console.log("Parsed nanoseconds:", timestamp, "-> Date:", date);
               } else if (timestamp) {
                 date = new Date(timestamp);
-                console.log("Parsed ISO/other:", timestamp, "-> Date:", date);
               } else {
                 console.error("No timestamp found in log data");
                 date = new Date();
@@ -282,7 +282,6 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
                   minute: "2-digit",
                   second: "2-digit",
                 })}.${date.getMilliseconds().toString().padStart(3, "0")}`;
-                console.log("Formatted time:", formattedTime);
               } else {
                 console.error("Invalid date after parsing:", date);
               }
@@ -371,8 +370,6 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
             console.error(`Error parsing log message #${messageCount}:`, error, event.data);
           }
         };
-        
-        console.log("Total messages received:", messageCount);
 
         ws.onerror = (error) => {
           console.error("WebSocket error:", error);
