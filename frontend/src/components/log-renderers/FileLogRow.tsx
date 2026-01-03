@@ -2,10 +2,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { extractFileLogData } from "@/lib/log-utils";
-import type { RawLogData } from "@/types/log";
+import type { Log } from "@/types/log";
 
 interface FileLogRowProps {
-  log: RawLogData;
+  log: Log;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }
@@ -39,20 +39,20 @@ export function FileLogRow({
         onClick={onToggleExpand}
       >
         <TableCell className="font-mono text-xs text-muted-foreground">
-          {log.time ? new Date(log.time).toLocaleTimeString() : "-"}
+          {log.timestamp || "-"}
         </TableCell>
         <TableCell>
-          <Badge variant={getLevelBadgeVariant(log.severity_text || "INFO")}>
-            {log.severity_text || "INFO"}
+          <Badge variant={getLevelBadgeVariant(log.level)}>
+            {log.level}
           </Badge>
         </TableCell>
         <TableCell className="font-mono text-sm">
-          {log.service_name || "-"}
+          {log.source || "-"}
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate">
-          {fileData?.filePath || "-"}
+          {log.filePath || "-"}
         </TableCell>
-        <TableCell className="max-w-2xl truncate">{log.body}</TableCell>
+        <TableCell className="max-w-2xl truncate">{log.message}</TableCell>
         <TableCell className="text-right">
           {isExpanded ? (
             <ChevronUp className="h-4 w-4" />
@@ -69,7 +69,7 @@ export function FileLogRow({
               <div>
                 <h4 className="text-sm font-semibold mb-2">Full Message</h4>
                 <pre className="bg-background p-3 rounded-md text-sm whitespace-pre-wrap">
-                  {log.body}
+                  {log.message}
                 </pre>
               </div>
 
