@@ -58,9 +58,20 @@ BEGIN
     END IF;
 END $$;
 
--- Add foreign key for logs to services
-ALTER TABLE logs ADD CONSTRAINT logs_service_id_fkey 
-    FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE;
+-- Add foreign key for logs to services (only if not already exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'logs_service_id_fkey'
+    ) THEN
+        ALTER TABLE logs ADD CONSTRAINT logs_service_id_fkey 
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- If compression is enabled, log a notice and continue
+        RAISE NOTICE 'Could not add foreign key constraint (compression may be enabled): %', SQLERRM;
+END $$;
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_services_owner_id ON services(owner_id);
