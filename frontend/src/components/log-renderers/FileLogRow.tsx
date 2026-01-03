@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Clock, Server, FileText, Tag, Terminal, Copy, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { TableCell, TableRow } from "@/components/ui/table"; // Ensure TableRow is imported
+import { TableCell, TableRow } from "@/components/ui/table";
 import { extractFileLogData } from "@/lib/log-utils";
 import type { Log } from "@/types/log";
 import { cn } from "@/lib/utils";
@@ -149,7 +149,10 @@ export function FileLogRow({
 
   return (
     <>
-      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggleExpand}>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={onToggleExpand}
+      >
         <TableCell className="font-mono text-xs text-muted-foreground">
           {log.timestamp || "-"}
         </TableCell>

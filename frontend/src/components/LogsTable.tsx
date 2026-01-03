@@ -12,8 +12,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TableVirtuoso } from "react-virtuoso";
-import { Clock, FileText, Server, Tag } from "lucide-react";
 import { LogRow } from "@/components/log-renderers/LogRow";
 import { LogTableHeaders } from "@/components/log-renderers/LogTableHeaders";
 import { ServiceSelector } from "@/components/ServiceSelector";
@@ -864,53 +862,28 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-hidden">
-        <TableVirtuoso
-          data={filteredLogs}
-          overscan={200}
-          followOutput="smooth"
-          initialTopMostItemIndex={filteredLogs.length - 1}
-          components={{
-            Table: ({ style, ...props }) => (
-              <table
-                {...props}
-                style={{
-                  ...style,
-                  width: "100%",
-                  borderCollapse: "collapse",
+      <div className="flex-1 overflow-auto">
+        <Table>
+          <LogTableHeaders sourceType={predominantSourceType} />
+          <TableBody>
+            {filteredLogs.map((log) => (
+              <LogRow
+                key={log.id}
+                log={log}
+                isExpanded={expandedRows.has(log.id)}
+                onToggleExpand={() => {
+                  const newExpanded = new Set(expandedRows);
+                  if (newExpanded.has(log.id)) {
+                    newExpanded.delete(log.id);
+                  } else {
+                    newExpanded.add(log.id);
+                  }
+                  setExpandedRows(newExpanded);
                 }}
-                className="w-full caption-bottom text-sm"
               />
-            ),
-            TableHead: ({ style, ...props }) => (
-              <thead {...props} style={{ ...style }} className="[&_tr]:border-b" />
-            ),
-            TableRow: ({ item: _item, ...props }) => (
-              <tr {...props} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted" />
-            ),
-            TableBody: ({ style, ...props }) => (
-              <tbody {...props} style={{ ...style }} className="[&_tr:last-child]:border-0" />
-            ),
-          }}
-          fixedHeaderContent={() => (
-            <LogTableHeaders sourceType={predominantSourceType} />
-          )}
-          itemContent={(index, log) => (
-            <LogRow
-              log={log}
-              isExpanded={expandedRows.has(log.id)}
-              onToggleExpand={() => {
-                const newExpanded = new Set(expandedRows);
-                if (newExpanded.has(log.id)) {
-                  newExpanded.delete(log.id);
-                } else {
-                  newExpanded.add(log.id);
-                }
-                setExpandedRows(newExpanded);
-              }}
-            />
-          )}
-        />
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </>
   );
