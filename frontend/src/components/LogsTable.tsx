@@ -199,13 +199,13 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
     const connectWebSocket = async () => {
       try {
         // Get JWT token for WebSocket authentication
-        const jwtToken = await token();
-        if (!jwtToken) {
+        const jwtTokenResponse = await token();
+        if (!jwtTokenResponse?.token) {
           console.error("No JWT token available for WebSocket connection");
           return;
         }
         
-        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${jwtToken}`;
+        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${jwtTokenResponse.token}`;
         console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, 'token=***'));
 
         const ws = new WebSocket(wsUrl);
