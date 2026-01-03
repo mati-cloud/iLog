@@ -45,7 +45,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { signOut, token } from "@/lib/auth-client";
+import { signOut } from "@/lib/auth-client";
 import { config } from "@/lib/runtime-config";
 import {
   detectLogSourceType,
@@ -198,20 +198,10 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
     // Connect to WebSocket using current service
     const connectWebSocket = async () => {
       try {
-        const jwtResponse = await token();
-        let jwtToken: string | null = null;
-        
-        if (jwtResponse && 'data' in jwtResponse && jwtResponse.data) {
-          jwtToken = (jwtResponse.data as any).token;
-        }
-        
-        if (!jwtToken) {
-          console.error("No JWT token available for WebSocket authentication");
-          return;
-        }
-
-        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${encodeURIComponent(jwtToken)}`;
-        console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, 'token=***'));
+        // Authentication is handled via cookies by the backend auth middleware
+        // No need to send JWT token in query parameter
+        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}`;
+        console.log("Connecting to WebSocket:", wsUrl);
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
