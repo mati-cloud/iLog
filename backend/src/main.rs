@@ -1,3 +1,4 @@
+mod analytics;
 mod auth;
 mod db;
 mod models;
@@ -70,6 +71,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/services/:id/agents/:agent_id", axum::routing::delete(services::revoke_agent))
         .route("/api/logs/query", get(query_logs))
         .route("/api/logs/stream", get(stream_logs))
+        .route("/api/dashboard/metrics", get(analytics::get_dashboard_metrics))
+        .route("/api/dashboard/log-volume", get(analytics::get_log_volume_24h))
+        .route("/api/dashboard/storage-by-service", get(analytics::get_storage_by_service))
+        .route("/api/dashboard/agents", get(analytics::get_connected_agents))
+        .route("/api/dashboard/7day-ingestion", get(analytics::get_7day_ingestion))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,

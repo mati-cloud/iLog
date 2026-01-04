@@ -2,15 +2,21 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { auth } from "@/lib/auth";
+import { serverConfig } from "@/lib/server-config";
+import MetricCard from "@/components/dashboard/MetricCard";
+import LogVolumeChart from "@/components/dashboard/LogVolumeChart";
+import StorageByService from "@/components/dashboard/StorageByService";
+import AgentsList from "@/components/dashboard/AgentsList";
+import DailyIngestionChart from "@/components/dashboard/DailyIngestionChart";
+import {
+  fetchDashboardMetrics,
+  fetchLogVolume,
+  fetchStorageByService,
+  fetchConnectedAgents,
+  fetch7DayIngestion,
+} from "@/lib/api/dashboard";
+import "./dashboard.css";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -21,8 +27,31 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  // Fetch all dashboard data in parallel
+  const [metrics, logVolume, storageByService, agents, dailyIngestion] = await Promise.all([
+    fetchDashboardMetrics(serverConfig.backendUrl).catch(() => null),
+    fetchLogVolume(serverConfig.backendUrl).catch(() => []),
+    fetchStorageByService(serverConfig.backendUrl).catch(() => []),
+    fetchConnectedAgents(serverConfig.backendUrl).catch(() => []),
+    fetch7DayIngestion(serverConfig.backendUrl).catch(() => []),
+  ]);
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(2)}M`;
+    } else if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}K`;
+    }
+    return num.toString();
+  };
+
+  const formatChange = (percent: number) => {
+    const sign = percent >= 0 ? "+" : "";
+    return `${sign}${percent.toFixed(1)}%`;
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background dashboard-theme">
       <nav className="border-b">
         <div className="max-w-7xl mx-auto flex justify-between items-center p-4">
           <div className="flex items-center gap-2">
@@ -38,48 +67,54 @@ export default async function DashboardPage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardDescription>Total Logs</CardDescription>
-              <CardTitle className="text-4xl">0</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardDescription>Active Services</CardDescription>
-              <CardTitle className="text-4xl">0</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardDescription>Errors (24h)</CardDescription>
-              <CardTitle className="text-4xl text-destructive">0</CardTitle>
-            </CardHeader>
-          </Card>
+      <main className="p-5 lg:p-6">
+        {/* Metrics Grid */}
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            title="Total Storage"
+            value={metrics ? `${metrics.total_storage_gb.toFixed(1)} GB` : "0 GB"}
+            subtitle="disk usage"
+            icon="HardDrive"
+            iconColor="text-primary"
+          />
+          <MetricCard
+            title="Agents Online"
+            value={metrics ? `${metrics.agents_online} / ${metrics.agents_total}` : "0 / 0"}
+            subtitle={metrics && metrics.agents_offline > 0 ? `${metrics.agents_offline} offline` : "all online"}
+            icon="Server"
+            iconColor="text-accent"
+          />
+          <MetricCard
+            title="Logs Today"
+            value={metrics ? formatNumber(metrics.logs_today) : "0"}
+            change={metrics ? formatChange(metrics.logs_today_change_percent) : undefined}
+            changeType={metrics && metrics.logs_today_change_percent >= 0 ? "positive" : "negative"}
+            subtitle="vs yesterday"
+            icon="FileText"
+            iconColor="text-primary"
+          />
+          <MetricCard
+            title="Errors (24h)"
+            value={metrics ? formatNumber(metrics.errors_24h) : "0"}
+            change={metrics ? formatChange(metrics.errors_change_percent) : undefined}
+            changeType={metrics && metrics.errors_change_percent <= 0 ? "positive" : "negative"}
+            subtitle="vs previous 24h"
+            icon="AlertTriangle"
+            iconColor="text-warning"
+          />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Logs</CardTitle>
-            <CardDescription>
-              View and analyze your OpenTelemetry logs in real-time
-            </CardDescription>
-          </CardHeader>
-          <Separator />
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground py-8">
-              <p className="text-lg">No logs yet</p>
-              <p className="text-sm mt-2">
-                Start sending logs to see them here. Check the API documentation
-                for details.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Main Chart */}
+        <div className="mb-5">
+          <LogVolumeChart data={logVolume} />
+        </div>
+
+        {/* Secondary Section */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <StorageByService data={storageByService} />
+          <AgentsList agents={agents} />
+          <DailyIngestionChart data={dailyIngestion} />
+        </div>
       </main>
     </div>
   );
