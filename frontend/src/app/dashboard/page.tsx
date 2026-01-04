@@ -27,13 +27,30 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  const userId = session.user.id;
+
   // Fetch all dashboard data in parallel
   const [metrics, logVolume, storageByService, agents, dailyIngestion] = await Promise.all([
-    fetchDashboardMetrics(serverConfig.backendUrl).catch(() => null),
-    fetchLogVolume(serverConfig.backendUrl).catch(() => []),
-    fetchStorageByService(serverConfig.backendUrl).catch(() => []),
-    fetchConnectedAgents(serverConfig.backendUrl).catch(() => []),
-    fetch7DayIngestion(serverConfig.backendUrl).catch(() => []),
+    fetchDashboardMetrics(serverConfig.backendUrl, userId).catch((e) => {
+      console.error("Failed to fetch metrics:", e);
+      return null;
+    }),
+    fetchLogVolume(serverConfig.backendUrl, userId).catch((e) => {
+      console.error("Failed to fetch log volume:", e);
+      return [];
+    }),
+    fetchStorageByService(serverConfig.backendUrl, userId).catch((e) => {
+      console.error("Failed to fetch storage by service:", e);
+      return [];
+    }),
+    fetchConnectedAgents(serverConfig.backendUrl, userId).catch((e) => {
+      console.error("Failed to fetch agents:", e);
+      return [];
+    }),
+    fetch7DayIngestion(serverConfig.backendUrl, userId).catch((e) => {
+      console.error("Failed to fetch 7-day ingestion:", e);
+      return [];
+    }),
   ]);
 
   const formatNumber = (num: number) => {

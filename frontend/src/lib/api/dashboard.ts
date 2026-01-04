@@ -41,66 +41,111 @@ export interface DailyIngestionDataPoint {
   storage_gb: number;
 }
 
-export async function fetchDashboardMetrics(backendUrl: string): Promise<DashboardMetrics> {
+export async function fetchDashboardMetrics(backendUrl: string, userId?: string): Promise<DashboardMetrics> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  
+  if (userId) {
+    headers["x-authenticated-by"] = "better-auth-frontend-proxy";
+    headers["x-better-auth-user-id"] = userId;
+  }
+  
   const response = await fetch(`${backendUrl}/api/dashboard/metrics`, {
-    credentials: "include",
+    headers,
     cache: "no-store",
   });
   
   if (!response.ok) {
-    throw new Error("Failed to fetch dashboard metrics");
+    throw new Error(`Failed to fetch dashboard metrics: ${response.status} ${response.statusText}`);
   }
   
   return response.json();
 }
 
-export async function fetchLogVolume(backendUrl: string): Promise<LogVolumeDataPoint[]> {
+export async function fetchLogVolume(backendUrl: string, userId?: string): Promise<LogVolumeDataPoint[]> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  
+  if (userId) {
+    headers["x-authenticated-by"] = "better-auth-frontend-proxy";
+    headers["x-better-auth-user-id"] = userId;
+  }
+  
   const response = await fetch(`${backendUrl}/api/dashboard/log-volume`, {
-    credentials: "include",
+    headers,
     cache: "no-store",
   });
   
   if (!response.ok) {
-    throw new Error("Failed to fetch log volume data");
+    throw new Error(`Failed to fetch log volume data: ${response.status} ${response.statusText}`);
   }
   
   return response.json();
 }
 
-export async function fetchStorageByService(backendUrl: string): Promise<StorageByServiceDataPoint[]> {
+export async function fetchStorageByService(backendUrl: string, userId?: string): Promise<StorageByServiceDataPoint[]> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  
+  if (userId) {
+    headers["x-authenticated-by"] = "better-auth-frontend-proxy";
+    headers["x-better-auth-user-id"] = userId;
+  }
+  
   const response = await fetch(`${backendUrl}/api/dashboard/storage-by-service`, {
-    credentials: "include",
+    headers,
     cache: "no-store",
   });
   
   if (!response.ok) {
-    throw new Error("Failed to fetch storage by service data");
+    throw new Error(`Failed to fetch storage by service data: ${response.status} ${response.statusText}`);
   }
   
   return response.json();
 }
 
-export async function fetchConnectedAgents(backendUrl: string): Promise<AgentInfo[]> {
+export async function fetchConnectedAgents(backendUrl: string, userId?: string): Promise<AgentInfo[]> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  
+  if (userId) {
+    headers["x-authenticated-by"] = "better-auth-frontend-proxy";
+    headers["x-better-auth-user-id"] = userId;
+  }
+  
   const response = await fetch(`${backendUrl}/api/dashboard/agents`, {
-    credentials: "include",
+    headers,
     cache: "no-store",
   });
   
   if (!response.ok) {
-    throw new Error("Failed to fetch connected agents");
+    throw new Error(`Failed to fetch connected agents: ${response.status} ${response.statusText}`);
   }
   
   return response.json();
 }
 
-export async function fetch7DayIngestion(backendUrl: string): Promise<DailyIngestionDataPoint[]> {
+export async function fetch7DayIngestion(backendUrl: string, userId?: string): Promise<DailyIngestionDataPoint[]> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  
+  if (userId) {
+    headers["x-authenticated-by"] = "better-auth-frontend-proxy";
+    headers["x-better-auth-user-id"] = userId;
+  }
+  
   const response = await fetch(`${backendUrl}/api/dashboard/7day-ingestion`, {
-    credentials: "include",
+    headers,
     cache: "no-store",
   });
   
   if (!response.ok) {
-    throw new Error("Failed to fetch 7-day ingestion data");
+    throw new Error(`Failed to fetch 7-day ingestion data: ${response.status} ${response.statusText}`);
   }
   
   return response.json();
