@@ -16,6 +16,7 @@ use axum::{
     Extension, Json, Router,
 };
 use std::{net::SocketAddr, sync::Arc};
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -31,6 +32,7 @@ use crate::{
 pub struct AppState {
     db: Arc<Database>,
     jwt_secret: String,
+    log_broadcast: broadcast::Sender<OtelLog>,
 }
 
 #[tokio::main]
@@ -54,9 +56,15 @@ async fn main() -> anyhow::Result<()> {
 
     let db_arc = Arc::new(db);
 
+    // Create broadcast channel for real-time log streaming
+    // Buffer size of 1000 logs - if a client is slow, older logs will be dropped
+    let (log_tx, _log_rx) = broadcast::channel::<OtelLog>(1000);
+    info!("Broadcast channel created for real-time log streaming");
+
     let state = AppState {
         db: Arc::clone(&db_arc),
         jwt_secret,
+        log_broadcast: log_tx.clone(),
     };
 
     let app = Router::new()
@@ -117,8 +125,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Spawn TCP server for agent connections
     let tcp_db = Arc::clone(&db_arc);
+    let tcp_log_tx = log_tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = tcp_server::start_tcp_server(tcp_addr, tcp_db).await {
+        if let Err(e) = tcp_server::start_tcp_server(tcp_addr, tcp_db, tcp_log_tx).await {
             tracing::error!("TCP server error: {}", e);
         }
     });
@@ -174,7 +183,8 @@ async fn stream_logs(
 ) -> Response {
     // Authentication is handled by the auth middleware
     // Claims extension proves the user is authenticated
-    ws.on_upgrade(move |socket| handle_websocket(socket, state.db, params))
+    let log_rx = state.log_broadcast.subscribe();
+    ws.on_upgrade(move |socket| handle_websocket(socket, state.db, params, log_rx))
 }
 
 pub struct AppError(anyhow::Error);

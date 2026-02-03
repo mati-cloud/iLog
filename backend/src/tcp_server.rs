@@ -6,6 +6,7 @@ use chacha20poly1305::{
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::{db::Database, models::OtelLog, otel};
@@ -153,7 +154,7 @@ impl Decryptor {
     }
 }
 
-async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
+async fn handle_client(mut stream: TcpStream, db: Arc<Database>, log_tx: broadcast::Sender<OtelLog>) {
     let peer_addr = stream.peer_addr().ok();
     info!("✓ Agent connection established from {:?}", peer_addr);
 
@@ -164,7 +165,7 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
                 info!("Received frame type {:?} with {} bytes payload from {:?}", frame.frame_type, frame.payload.len(), peer_addr);
                 match frame.frame_type {
                     FrameType::LogBatch => {
-                        match process_log_batch(&frame.payload, &db).await {
+                        match process_log_batch(&frame.payload, &db, &log_tx).await {
                             Ok((service_id, count)) => {
                                 info!("Processed {} logs from {:?} for service {}", count, peer_addr, service_id);
                                 
@@ -211,6 +212,7 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>) {
 async fn process_log_batch(
     encrypted_payload: &[u8],
     db: &Database,
+    log_tx: &broadcast::Sender<OtelLog>,
 ) -> Result<(uuid::Uuid, usize)> {
     // Fetch all active agent tokens from database
     let agents: Vec<(uuid::Uuid, uuid::Uuid, String)> = sqlx::query_as(
@@ -257,13 +259,24 @@ async fn process_log_batch(
         .context("Failed to decompress log batch")?;
 
     // Deserialize
-    let logs: Vec<OtelLog> =
+    let mut logs: Vec<OtelLog> =
         serde_json::from_slice(&json_bytes).context("Failed to deserialize logs")?;
 
     let count = logs.len();
 
+    // Set service_id on each log for filtering
+    for log in &mut logs {
+        log.service_id = Some(service_id);
+    }
+
     // Insert logs with authenticated service_id
-    otel::ingest_logs(db, logs, service_id).await?;
+    otel::ingest_logs(db, logs.clone(), service_id).await?;
+
+    // Broadcast logs to WebSocket clients for real-time streaming
+    for log in logs {
+        // Ignore send errors - it's okay if no clients are listening
+        let _ = log_tx.send(log);
+    }
 
     Ok((service_id, count))
 }
@@ -271,6 +284,7 @@ async fn process_log_batch(
 pub async fn start_tcp_server(
     addr: std::net::SocketAddr,
     db: Arc<Database>,
+    log_tx: broadcast::Sender<OtelLog>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("TCP server listening on {}", addr);
@@ -279,8 +293,9 @@ pub async fn start_tcp_server(
         match listener.accept().await {
             Ok((stream, _)) => {
                 let db = Arc::clone(&db);
+                let log_tx = log_tx.clone();
                 tokio::spawn(async move {
-                    handle_client(stream, db).await;
+                    handle_client(stream, db, log_tx).await;
                 });
             }
             Err(e) => {

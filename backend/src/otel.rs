@@ -137,6 +137,7 @@ pub async fn query_logs(db: &Database, query: LogQuery) -> anyhow::Result<Vec<Ot
             scope_name: row.scope_name,
             scope_version: row.scope_version,
             scope_attributes: row.scope_attributes,
+            service_id: None,
         })
         .collect();
 

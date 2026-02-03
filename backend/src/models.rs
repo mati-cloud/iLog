@@ -30,6 +30,8 @@ pub struct OtelLog {
     pub scope_version: Option<String>,
     #[serde(rename = "scopeAttributes", skip_serializing_if = "Option::is_none")]
     pub scope_attributes: Option<JsonValue>,
+    #[serde(skip)]
+    pub service_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

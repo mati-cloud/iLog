@@ -1,23 +1,31 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
+use tokio::sync::broadcast;
 use tracing::{error, info};
-use crate::{db::Database, models::LogQuery};
+use uuid::Uuid;
+use crate::{db::Database, models::{LogQuery, OtelLog}};
 
-pub async fn handle_websocket(socket: WebSocket, db: Arc<Database>, query_params: LogQuery) {
+pub async fn handle_websocket(
+    socket: WebSocket,
+    db: Arc<Database>,
+    query_params: LogQuery,
+    log_rx: broadcast::Receiver<OtelLog>,
+) {
     let (mut sender, mut receiver) = socket.split();
 
     info!("WebSocket connection established");
 
-    // Spawn a task to send log updates
+    // Parse service_id filter
+    let service_filter: Option<Uuid> = query_params.service.as_ref().and_then(|s| s.parse().ok());
+    info!("WebSocket filtering for service: {:?}", service_filter);
+
+    // Spawn a task to send log updates from broadcast channel
     let db_clone = db.clone();
-    let service_filter = query_params.service;
     let mut send_task = tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_secs(2));
-        
+        // Send initial historical logs (last 100 from past 24h)
         let initial_query = LogQuery {
-            service: service_filter.clone(),
+            service: query_params.service.clone(),
             service_name: None,
             severity: None,
             trace_id: None,
@@ -31,7 +39,7 @@ pub async fn handle_websocket(socket: WebSocket, db: Arc<Database>, query_params
         match crate::otel::query_logs(&db_clone, initial_query).await {
             Ok(logs) => {
                 if !logs.is_empty() {
-                    info!("Sending {} initial logs to WebSocket client", logs.len());
+                    info!("Sending {} initial historical logs to WebSocket client", logs.len());
                     for log in &logs {
                         let json = serde_json::to_string(&log).unwrap_or_default();
                         if sender.send(Message::Text(json)).await.is_err() {
@@ -47,42 +55,36 @@ pub async fn handle_websocket(socket: WebSocket, db: Arc<Database>, query_params
             }
         }
         
-        let mut last_check = chrono::Utc::now();
+        // Subscribe to real-time broadcast channel
+        let mut rx = log_rx;
+        info!("Subscribed to real-time log broadcast");
 
         loop {
-            ticker.tick().await;
-
-            let now = chrono::Utc::now();
-            let query = LogQuery {
-                service: service_filter.clone(),
-                service_name: None,
-                severity: None,
-                trace_id: None,
-                start_time: Some(last_check),
-                end_time: Some(now),
-                limit: Some(100),
-                search: None,
-                token: None,
-            };
-
-            match crate::otel::query_logs(&db_clone, query).await {
-                Ok(logs) => {
-                    if !logs.is_empty() {
-                        info!("Sending {} logs to WebSocket client", logs.len());
-                        for log in &logs {
-                            let json = serde_json::to_string(&log).unwrap_or_default();
-                            if sender.send(Message::Text(json)).await.is_err() {
-                                break;
-                            }
+            match rx.recv().await {
+                Ok(log) => {
+                    // Filter by service_id if specified
+                    if let Some(filter_id) = service_filter {
+                        if log.service_id != Some(filter_id) {
+                            continue;
                         }
                     }
+
+                    // Send log to WebSocket client
+                    let json = serde_json::to_string(&log).unwrap_or_default();
+                    if sender.send(Message::Text(json)).await.is_err() {
+                        info!("WebSocket client disconnected, stopping send task");
+                        break;
+                    }
                 }
-                Err(e) => {
-                    error!("Error querying logs: {}", e);
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    error!("WebSocket client lagged, skipped {} logs", skipped);
+                    // Continue receiving - client was too slow but is still connected
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    info!("Broadcast channel closed, stopping send task");
+                    break;
                 }
             }
-
-            last_check = now;
         }
     });
 
