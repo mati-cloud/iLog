@@ -66,6 +66,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /tmp/ilog-backend /app/ilog-backend
+COPY --from=builder /app/migrations /app/migrations
 
 EXPOSE 8080
 

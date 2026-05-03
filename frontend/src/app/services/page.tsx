@@ -241,7 +241,7 @@ export default function ServicesPage() {
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight">Services</h1>
             <p className="text-muted-foreground">
-              Manage your log collection services and access tokens
+              Manage your log collection services and access tokens.
             </p>
           </div>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

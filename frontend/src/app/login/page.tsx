@@ -86,7 +86,7 @@ function LoginForm() {
           return;
         }
 
-        router.push("/projects");
+        router.push("/services");
       } else {
         const result = await signIn.email({
           email,
