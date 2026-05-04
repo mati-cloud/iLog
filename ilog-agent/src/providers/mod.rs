@@ -15,9 +15,6 @@ pub trait LogProvider: Send + Sync {
 #[cfg(feature = "file")]
 pub mod file;
 
-#[cfg(feature = "file")]
-pub mod file_parsed;
-
 #[cfg(feature = "docker")]
 pub mod docker;
 

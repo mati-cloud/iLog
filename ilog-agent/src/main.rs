@@ -23,6 +23,10 @@ struct Args {
     /// Path to configuration file
     #[arg(short, long, value_name = "FILE")]
     config: PathBuf,
+    
+    /// Path to parser configuration file (log sources)
+    #[arg(short, long, value_name = "FILE")]
+    parser: PathBuf,
 }
 
 #[tokio::main]
@@ -60,20 +64,23 @@ async fn main() -> Result<()> {
     // Collect all enabled providers
     let mut provider_handles = vec![];
 
-    // File provider
+    // File provider (always parsed)
     #[cfg(feature = "file")]
     {
-        if config.sources.file.as_ref().map(|f| f.enabled).unwrap_or(false) {
-            let provider = providers::file::FileProvider::new(config.clone());
-            let tx_clone = tx.clone();
-            info!("Starting {} provider", provider.name());
-            let handle = tokio::spawn(async move {
-                if let Err(e) = provider.start(tx_clone).await {
-                    error!("File provider error: {}", e);
-                }
-            });
-            provider_handles.push(handle);
-        }
+        info!("Loading parser config from {:?}", args.parser);
+        let parser_config_str = std::fs::read_to_string(&args.parser)?;
+        let parser_config: parser::ParserConfig = serde_yaml::from_str(&parser_config_str)?;
+        info!("Loaded {} log sources", parser_config.sources.len());
+        
+        let provider = providers::file::FileProvider::new(parser_config);
+        let tx_clone = tx.clone();
+        info!("Starting {} provider", provider.name());
+        let handle = tokio::spawn(async move {
+            if let Err(e) = provider.start(tx_clone).await {
+                error!("File provider error: {}", e);
+            }
+        });
+        provider_handles.push(handle);
     }
 
     // Docker provider

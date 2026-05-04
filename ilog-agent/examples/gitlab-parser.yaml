@@ -1,5 +1,5 @@
 # GitLab Log Parser Config
-# Use with: ilog-agent-parsed -c config.toml -p examples/gitlab-parser.yaml
+# Use with: ilog-agent -c config.toml -p examples/gitlab-parser.yaml
 
 sources:
   # GitLab Production JSON logs
