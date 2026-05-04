@@ -257,15 +257,25 @@ export function FileLogRow({
                       <Tag className="w-3 h-3" />
                       <span className="text-[10px] uppercase tracking-wider font-medium">Metadata</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {Object.entries(parsedAttrs).map(([key, value]) => {
-                        const displayValue = typeof value === 'object' && value !== null
-                          ? JSON.stringify(value)
-                          : String(value);
+                        const isObject = typeof value === 'object' && value !== null;
+                        
+                        if (isObject) {
+                          return (
+                            <div key={key} className="space-y-1">
+                              <div className="text-[10px] text-muted-foreground font-medium">{key}</div>
+                              <pre className="text-[11px] font-mono bg-background/50 p-2 rounded overflow-x-auto">
+                                {JSON.stringify(value, null, 2)}
+                              </pre>
+                            </div>
+                          );
+                        }
+                        
                         return (
-                          <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
+                          <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px] mr-2 mb-2">
                             <span className="text-muted-foreground">{key}:</span>
-                            <span className="text-foreground font-mono">{displayValue}</span>
+                            <span className="text-foreground font-mono">{String(value)}</span>
                           </div>
                         );
                       })}
