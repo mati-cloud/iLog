@@ -282,27 +282,31 @@ export function FileLogRow({
                       <span className="text-[10px] uppercase tracking-wider font-medium">Metadata</span>
                     </div>
                     <div className="space-y-2">
-                      {Object.entries(parsedAttrs).map(([key, value]) => {
-                        const isObject = typeof value === 'object' && value !== null;
-                        
-                        if (isObject) {
-                          return (
-                            <div key={key} className="space-y-1">
-                              <div className="text-[10px] text-muted-foreground font-medium">{key}</div>
-                              <pre className="text-[11px] font-mono bg-background/50 p-2 rounded overflow-x-auto max-w-full whitespace-pre-wrap break-words">
-                                {JSON.stringify(value, null, 2)}
-                              </pre>
-                            </div>
-                          );
-                        }
-                        
-                        return (
-                          <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px] mr-2 mb-2">
-                            <span className="text-muted-foreground">{key}:</span>
-                            <span className="text-foreground font-mono break-all">{String(value)}</span>
+                      {/* Object values */}
+                      {Object.entries(parsedAttrs)
+                        .filter(([_, value]) => typeof value === 'object' && value !== null)
+                        .map(([key, value]) => (
+                          <div key={key} className="space-y-1">
+                            <div className="text-[10px] text-muted-foreground font-medium">{key}</div>
+                            <pre className="text-[11px] font-mono bg-background/50 p-2 rounded overflow-x-auto max-w-full whitespace-pre-wrap break-words">
+                              {JSON.stringify(value, null, 2)}
+                            </pre>
                           </div>
-                        );
-                      })}
+                        ))}
+                      
+                      {/* Simple values - wrapped in flex container */}
+                      {Object.entries(parsedAttrs).filter(([_, value]) => !(typeof value === 'object' && value !== null)).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(parsedAttrs)
+                            .filter(([_, value]) => !(typeof value === 'object' && value !== null))
+                            .map(([key, value]) => (
+                              <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
+                                <span className="text-muted-foreground">{key}:</span>
+                                <span className="text-foreground font-mono break-all max-w-xs">{String(value)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
