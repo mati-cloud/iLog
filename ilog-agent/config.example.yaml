@@ -1,0 +1,38 @@
+# iLog Agent v2 - Config-Driven Log Parser
+# Supports JSON and Regex parsing
+
+sources:
+  # GitLab JSON logs (easy!)
+  - name: gitlab-production
+    path: /var/log/gitlab/gitlab-rails/production_json.log
+    format: json
+    # No field mapping = send all fields
+
+  - name: gitlab-api
+    path: /var/log/gitlab/gitlab-rails/api_json.log
+    format: json
+    fields:
+      - name: trace_id
+        from: correlation_id
+      - name: duration_ms
+        from: duration_s
+        field_type: float
+
+  # NGINX access logs (regex)
+  - name: gitlab-nginx
+    path: /var/log/gitlab/nginx/gitlab_access.log
+    format: regex
+    pattern: '^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<proto>\S+)" (?P<status>\d+) (?P<bytes>\d+)'
+    fields:
+      - name: http.client_ip
+        from: ip
+      - name: http.method
+        from: method
+      - name: http.path
+        from: path
+      - name: http.status_code
+        from: status
+        field_type: int
+      - name: http.bytes_sent
+        from: bytes
+        field_type: int

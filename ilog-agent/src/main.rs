@@ -3,6 +3,7 @@ mod tcp_sender;
 mod crypto;
 mod protocol;
 mod providers;
+mod parser;
 
 use anyhow::Result;
 use clap::Parser;
