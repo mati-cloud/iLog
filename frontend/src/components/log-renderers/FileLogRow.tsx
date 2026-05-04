@@ -176,25 +176,25 @@ export function FileLogRow({
   return (
     <>
       <TableRow
-        className="cursor-pointer hover:bg-muted/50"
+        className="cursor-pointer hover:bg-muted/50 h-12"
         onClick={onToggleExpand}
       >
-        <TableCell className="font-mono text-xs text-muted-foreground">
+        <TableCell className="font-mono text-xs text-muted-foreground py-2">
           {log.timestamp || "-"}
         </TableCell>
-        <TableCell>
+        <TableCell className="py-2">
           <Badge variant={getLevelBadgeVariant(log.level)}>
             {log.level}
           </Badge>
         </TableCell>
-        <TableCell className="font-mono text-sm">
+        <TableCell className="font-mono text-sm py-2">
           {log.source || "-"}
         </TableCell>
-        <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate">
+        <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate py-2">
           {log.filePath || "-"}
         </TableCell>
-        <TableCell className="max-w-2xl truncate">{log.message}</TableCell>
-        <TableCell className="text-right">
+        <TableCell className="max-w-2xl truncate py-2">{log.message}</TableCell>
+        <TableCell className="text-right py-2">
           {isExpanded ? (
             <ChevronUp className="h-4 w-4" />
           ) : (

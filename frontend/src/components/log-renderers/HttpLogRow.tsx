@@ -54,32 +54,35 @@ export function HttpLogRow({
   return (
     <>
       <TableRow
-        className="cursor-pointer hover:bg-muted/50"
+        className="cursor-pointer hover:bg-muted/50 h-12"
         onClick={onToggleExpand}
       >
-        <TableCell className="font-mono text-xs text-muted-foreground">
+        <TableCell className="font-mono text-xs text-muted-foreground py-2">
           {log.timestamp}
         </TableCell>
-        <TableCell>
+        <TableCell className="py-2">
           <span className={`font-semibold ${getMethodColor(httpData.method)}`}>
             {httpData.method}
           </span>
         </TableCell>
-        <TableCell className="font-mono text-sm max-w-md truncate">
+        <TableCell className="font-mono text-sm max-w-md truncate py-2">
           {httpData.path}
         </TableCell>
-        <TableCell>
+        <TableCell className="py-2">
           <Badge variant={getStatusBadgeVariant(httpData.statusCode)}>
             {httpData.statusCode}
           </Badge>
         </TableCell>
-        <TableCell className="text-muted-foreground">
+        <TableCell className="text-muted-foreground py-2">
           {httpData.duration !== undefined ? `${httpData.duration}ms` : "-"}
         </TableCell>
-        <TableCell className="font-mono text-xs text-muted-foreground">
+        <TableCell className="font-mono text-xs text-muted-foreground py-2">
           {httpData.ip || "-"}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell className="font-mono text-xs text-muted-foreground truncate py-2">
+          {log.service_name || log.serviceName || "-"}
+        </TableCell>
+        <TableCell className="text-right py-2">
           {isExpanded ? (
             <ChevronUp className="h-4 w-4" />
           ) : (
@@ -90,7 +93,7 @@ export function HttpLogRow({
 
       {isExpanded && (
         <TableRow>
-          <TableCell colSpan={7} className="bg-muted/30 p-4">
+          <TableCell colSpan={8} className="bg-muted/30 p-4">
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
