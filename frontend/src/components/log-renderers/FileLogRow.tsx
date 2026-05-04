@@ -141,6 +141,19 @@ export function FileLogRow({
     }
   }
   
+  // Check if message is JSON and format it
+  let formattedMessage = log.message;
+  let isJsonMessage = false;
+  try {
+    const parsed = JSON.parse(log.message);
+    if (typeof parsed === 'object' && parsed !== null) {
+      formattedMessage = JSON.stringify(parsed, null, 2);
+      isJsonMessage = true;
+    }
+  } catch (e) {
+    // Not JSON, use as-is
+  }
+  
   const fileData = extractFileLogData(parsedAttrs);
   const httpRequest = parseHttpRequest(log.message);
   const curlCommand = httpRequest ? generateCurlCommand(httpRequest, log) : null;
@@ -221,12 +234,23 @@ export function FileLogRow({
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <FileText className="w-3 h-3" />
                       <span className="text-[10px] uppercase tracking-wider font-medium">Message</span>
+                      {isJsonMessage && (
+                        <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-mono">
+                          JSON
+                        </span>
+                      )}
                     </div>
                     <CopyButton text={log.message} />
                   </div>
-                  <p className="text-xs font-mono text-foreground leading-relaxed break-all">
-                    {log.message}
-                  </p>
+                  {isJsonMessage ? (
+                    <pre className="text-xs font-mono text-foreground leading-relaxed overflow-x-auto bg-background/50 p-2 rounded">
+                      {formattedMessage}
+                    </pre>
+                  ) : (
+                    <p className="text-xs font-mono text-foreground leading-relaxed break-all">
+                      {log.message}
+                    </p>
+                  )}
                 </div>
                 
                 {/* Curl Command - only for HTTP requests */}
