@@ -289,7 +289,18 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
               console.error("Error parsing timestamp:", timestamp, e);
             }
 
-            const attrs = logData.logAttributes || logData.log_attributes;
+            let attrs = logData.logAttributes || logData.log_attributes;
+            
+            // Parse log_attributes if it's a JSON string
+            if (typeof attrs === 'string') {
+              try {
+                attrs = JSON.parse(attrs);
+              } catch (e) {
+                console.error('Failed to parse log_attributes:', e);
+                attrs = {};
+              }
+            }
+            
             const sourceType = attrs?.source_type || "unknown";
 
             let sourceName = "unknown";
@@ -322,7 +333,7 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
               }
             } else if (sourceType === "journald") {
               sourceName =
-                logData.log_attributes?.unit ||
+                attrs?.unit ||
                 logData.serviceName ||
                 logData.service_name ||
                 logData.service ||
