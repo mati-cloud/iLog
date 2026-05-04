@@ -128,7 +128,20 @@ export function FileLogRow({
   isExpanded,
   onToggleExpand,
 }: FileLogRowProps) {
-  const fileData = extractFileLogData(log.log_attributes);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  
+  // Parse log_attributes if it's a string
+  let parsedAttrs = log.log_attributes;
+  if (typeof parsedAttrs === 'string') {
+    try {
+      parsedAttrs = JSON.parse(parsedAttrs);
+    } catch (e) {
+      console.error('Failed to parse log_attributes:', e);
+      parsedAttrs = {};
+    }
+  }
+  
+  const fileData = extractFileLogData(parsedAttrs);
   const httpRequest = parseHttpRequest(log.message);
   const curlCommand = httpRequest ? generateCurlCommand(httpRequest, log) : null;
 
@@ -238,19 +251,24 @@ export function FileLogRow({
                 )}
                 
                 {/* Metadata */}
-                {log.log_attributes && Object.keys(log.log_attributes).length > 0 && (
+                {parsedAttrs && Object.keys(parsedAttrs).length > 0 && (
                   <div className="p-3 border-t border-border">
                     <div className="flex items-center gap-2 text-muted-foreground mb-2">
                       <Tag className="w-3 h-3" />
                       <span className="text-[10px] uppercase tracking-wider font-medium">Metadata</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {Object.entries(log.log_attributes).map(([key, value]) => (
-                        <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
-                          <span className="text-muted-foreground">{key}:</span>
-                          <span className="text-foreground font-mono">{String(value)}</span>
-                        </div>
-                      ))}
+                      {Object.entries(parsedAttrs).map(([key, value]) => {
+                        const displayValue = typeof value === 'object' && value !== null
+                          ? JSON.stringify(value)
+                          : String(value);
+                        return (
+                          <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px]">
+                            <span className="text-muted-foreground">{key}:</span>
+                            <span className="text-foreground font-mono">{displayValue}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
