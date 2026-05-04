@@ -289,7 +289,7 @@ export function FileLogRow({
                           return (
                             <div key={key} className="space-y-1">
                               <div className="text-[10px] text-muted-foreground font-medium">{key}</div>
-                              <pre className="text-[11px] font-mono bg-background/50 p-2 rounded overflow-x-auto">
+                              <pre className="text-[11px] font-mono bg-background/50 p-2 rounded overflow-x-auto max-w-full whitespace-pre-wrap break-words">
                                 {JSON.stringify(value, null, 2)}
                               </pre>
                             </div>
@@ -299,7 +299,7 @@ export function FileLogRow({
                         return (
                           <div key={key} className="inline-flex items-center gap-1.5 bg-secondary/50 px-2 py-1 rounded text-[11px] mr-2 mb-2">
                             <span className="text-muted-foreground">{key}:</span>
-                            <span className="text-foreground font-mono">{String(value)}</span>
+                            <span className="text-foreground font-mono break-all">{String(value)}</span>
                           </div>
                         );
                       })}
