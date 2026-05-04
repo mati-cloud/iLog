@@ -56,6 +56,10 @@ async-trait = "0.1"
 # File watching and globbing
 glob = "0.3"
 
+[[bin]]
+name = "ilog-agent-parsed"
+path = "src/bin/ilog-agent-parsed.rs"
+
 [features]
 default = ["file"]
 file = ["notify"]
