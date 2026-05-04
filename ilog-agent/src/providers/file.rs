@@ -95,6 +95,19 @@ impl FileProvider {
                 // Parse the log line
                 let parsed_attrs = parser.parse(log_text);
                 
+                // Extract message from parsed attributes or use raw line
+                let message = if let Some(ref attrs) = parsed_attrs {
+                    // Try common message fields
+                    attrs.get("message")
+                        .or_else(|| attrs.get("msg"))
+                        .or_else(|| attrs.get("body"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| log_text.to_string())
+                } else {
+                    log_text.to_string()
+                };
+                
                 let entry = LogEntry {
                     timestamp: chrono::Utc::now(),
                     level: parsed_attrs.as_ref()
@@ -103,7 +116,7 @@ impl FileProvider {
                         .unwrap_or("INFO")
                         .to_string(),
                     service: service_name.clone(),
-                    message: log_text.to_string(),
+                    message,
                     attributes: parsed_attrs.map(|m| serde_json::to_value(m).unwrap_or(serde_json::json!({}))),
                 };
                 
