@@ -7,12 +7,14 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use rand::Rng;
-use sqlx::PgPool;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
 
 use crate::{
-    models::{Claims, CreateService, CreateAgent, Service, Agent, AgentClaims, AgentResponse, UpdateService},
+    models::{
+        Agent, AgentCreatedResponse, AgentResponse, Claims, CreateAgent, CreateService, Service,
+        UpdateService,
+    },
     AppState,
 };
 
@@ -29,14 +31,45 @@ fn generate_slug(name: &str) -> String {
 }
 
 // Generate a secure random token
-fn generate_token(service_id: Uuid) -> String {
-    let random: String = rand::thread_rng()
+/// Mint an agent token that carries the agent's own id.
+///
+/// Format: `agt_<agent_id_simple>_<key_secret>`, where `key_secret` is 32 random
+/// alphanumerics.
+///
+/// Embedding the id lets an agent name itself on the wire without a second
+/// config field, which in turn lets the backend resolve the right decryption key
+/// with one primary-key lookup instead of trying every registered token. The id
+/// is not a secret and carries no authority on its own: `key_secret` is the
+/// actual credential, and possession is proven by the AEAD tag.
+///
+/// Returns the full token and `key_secret` separately. Only the latter is
+/// persisted (encrypted, see [`crate::token_crypto`]); the full token is shown
+/// to the operator once at creation and is not recoverable afterward.
+fn generate_token(agent_id: Uuid) -> (String, String) {
+    let key_secret: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(32)
         .map(char::from)
         .collect();
-    format!("proj_{}_{}", service_id.simple(), random)
+    let token = format!("agt_{}_{}", agent_id.simple(), key_secret);
+    (token, key_secret)
 }
+
+/// Rebuild the token string for an agent from its id and stored `key_secret`.
+///
+/// The transport key is derived from the whole token rather than from
+/// `key_secret` alone, so the backend has to reassemble the exact string the
+/// agent holds. Keeping the derivation input unchanged is what lets the agent
+/// side stay untouched by the at-rest encryption work.
+pub fn token_from_parts(agent_id: Uuid, key_secret: &str) -> String {
+    format!("agt_{}_{}", agent_id.simple(), key_secret)
+}
+
+// `agent_id_from_token` used to live here for `validate_agent_token`'s benefit.
+// The backend no longer receives a token string on any path: the TCP frame header
+// carries the agent id directly, and the token is only ever built outward via
+// [`token_from_parts`]. The agent still parses its own configured token; see
+// `ilog-agent/src/protocol.rs`.
 
 fn better_auth_id_to_uuid(better_auth_id: &str) -> Uuid {
     // Hash the Better Auth ID to get a deterministic UUID
@@ -263,28 +296,55 @@ pub async fn create_agent(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let token = generate_token(service_id);
+    // The id is generated here rather than by the database so it can be
+    // embedded in the token itself.
+    let agent_id = Uuid::new_v4();
+    let (token, key_secret) = generate_token(agent_id);
     let expires_at = payload
         .expires_in_days
         .map(|days| Utc::now() + Duration::days(days));
 
+    // Wrapped before it ever reaches the database. A failure here must not fall
+    // through to storing anything: no agent is better than an agent whose secret
+    // is readable.
+    let key_secret_encrypted = state.token_crypto.wrap(&key_secret).map_err(|e| {
+        tracing::error!("Failed to wrap key secret for new agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     let agent: Agent = sqlx::query_as(
         r#"
-        INSERT INTO agents (service_id, name, token, source_type, expires_at)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, service_id, name, token, source_type, expires_at, last_used_at, created_at
+        INSERT INTO agents (id, service_id, name, key_secret_encrypted, source_type, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, service_id, name, source_type, expires_at, last_used_at, created_at
         "#,
     )
+    .bind(agent_id)
     .bind(service_id)
     .bind(&payload.name)
-    .bind(&token)
+    .bind(&key_secret_encrypted)
     .bind(&payload.source_type)
     .bind(expires_at)
     .fetch_one(state.db.pool())
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok((StatusCode::CREATED, Json(agent)))
+    // The only time the token is ever returned. It cannot be recovered from the
+    // stored ciphertext without TOKEN_ENCRYPTION_KEY, and no other route exposes
+    // it -- if the operator loses it, the agent has to be reissued.
+    Ok((
+        StatusCode::CREATED,
+        Json(AgentCreatedResponse {
+            id: agent.id,
+            service_id: agent.service_id,
+            name: agent.name,
+            source_type: agent.source_type,
+            expires_at: agent.expires_at,
+            last_used_at: agent.last_used_at,
+            created_at: agent.created_at,
+            token,
+        }),
+    ))
 }
 
 // List agents
@@ -310,7 +370,7 @@ pub async fn list_agents(
 
     let agents: Vec<Agent> = sqlx::query_as(
         r#"
-        SELECT id, service_id, name, token, source_type, expires_at, last_used_at, created_at
+        SELECT id, service_id, name, source_type, expires_at, last_used_at, created_at
         FROM agents
         WHERE service_id = $1
         ORDER BY created_at DESC
@@ -371,31 +431,11 @@ pub async fn revoke_agent(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn validate_agent_token(
-    pool: &PgPool,
-    token: &str,
-) -> Result<AgentClaims, StatusCode> {
-    let result: Agent = sqlx::query_as(
-        r#"
-        SELECT id, service_id, name, token, source_type, expires_at, last_used_at, created_at
-        FROM agents
-        WHERE token = $1
-          AND (expires_at IS NULL OR expires_at > NOW())
-        "#,
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let _ = sqlx::query("UPDATE agents SET last_used_at = NOW() WHERE id = $1")
-        .bind(result.id)
-        .execute(pool)
-        .await;
-
-    Ok(AgentClaims {
-        service_id: result.service_id,
-        agent_id: result.id,
-    })
-}
+// `validate_agent_token` used to live here, serving the HTTP bearer ingest path
+// at `POST /v1/logs`. Both are gone: the agent has only ever spoken TCP since it
+// began refusing `protocol: "http"`, and the route had no other client. Its
+// lookup was `WHERE token = $1`, which the encrypted-at-rest column cannot
+// support anyway -- there is no plaintext column left to match on.
+//
+// On the TCP path the AEAD tag is what authenticates a batch. See
+// `tcp_server::process_log_batch`.

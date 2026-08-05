@@ -23,9 +23,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # Encryption (ChaCha20-Poly1305)
 chacha20poly1305 = "0.10"
 rand = "0.8"
+# Key derivation from agent token
+hkdf = "0.12"
+sha2 = "0.10"
 
-# Compression (LZ4)
-lz4 = "1.24"
+# Agent identity on the wire
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Compression (LZ4) — pure-Rust, must match the backend's crate exactly
+lz4_flex = "0.11"
 
 # Logging
 tracing = "0.1"

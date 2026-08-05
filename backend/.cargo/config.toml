@@ -1,8 +1,9 @@
 # Cargo build optimizations
 
 [build]
-# Use all available CPU cores for parallel compilation
-jobs = 0  # 0 = number of logical CPUs
+# Parallel job count is left unset: cargo already defaults to the number of
+# logical CPUs. An explicit `jobs = 0` once meant the same thing but is now
+# rejected ("error: jobs may not be 0"), which blocked every cargo invocation.
 
 # Disable incremental compilation (incompatible with sccache)
 incremental = false

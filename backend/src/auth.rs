@@ -6,130 +6,85 @@ use axum::{
     response::Response,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{models::Claims, AppState};
 
+/// Authenticate a request and attach verified [`Claims`] to its extensions.
+///
+/// Two credential types are accepted, both cryptographically verified:
+///
+/// 1. A backend-issued HS256 JWT, signed with `state.jwt_secret`.
+/// 2. A better-auth EdDSA JWT, verified against the better-auth JWKS endpoint.
+///
+/// Both must arrive as `Authorization: Bearer <token>`, except on the WebSocket
+/// upgrade route, which cannot set headers from the browser and instead passes
+/// the token via `Sec-WebSocket-Protocol` (see [`websocket_token`]).
+///
+/// Anything else is rejected with 401. In particular there is deliberately no
+/// path that trusts an unverified token, a proxy-supplied identity header, or
+/// the mere presence of a session cookie.
 pub async fn auth_middleware(
     State(state): State<AppState>,
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth for public routes
-    let path = req.uri().path();
-    tracing::info!("Auth middleware checking path: {}", path);
-    
-    if path == "/health" {
+    if req.uri().path() == "/health" {
         return Ok(next.run(req).await);
     }
 
-    // Check for token in query parameter (for WebSocket connections)
-    if let Some(query) = req.uri().query() {
-        if let Some(token_param) = query.split('&').find(|p| p.starts_with("token=")) {
-            if let Some(token) = token_param.strip_prefix("token=") {
-                tracing::info!("Found token in query parameter");
-                // Try to decode with backend JWT secret
-                if let Ok(claims) = jsonwebtoken::decode::<Claims>(
-                    token,
-                    &jsonwebtoken::DecodingKey::from_secret(state.jwt_secret.as_bytes()),
-                    &jsonwebtoken::Validation::default(),
-                ) {
-                    req.extensions_mut().insert(claims.claims);
-                    return Ok(next.run(req).await);
-                }
-                
-                // If that fails, assume it's a better-auth JWT token
-                if token.split('.').count() == 3 {
-                    let claims = Claims {
-                        sub: "better-auth-user".to_string(),
-                        exp: (std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs() as usize)
-                            + 86400,
-                    };
-                    req.extensions_mut().insert(claims);
-                    return Ok(next.run(req).await);
-                }
-            }
-        }
+    let token = bearer_token(&req)
+        .or_else(|| websocket_token(&req))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let claims = verify_token(&state, &token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    req.extensions_mut().insert(claims);
+    Ok(next.run(req).await)
+}
+
+/// Verify `token` as either a backend-signed JWT or a better-auth JWT.
+async fn verify_token(state: &AppState, token: &str) -> Option<Claims> {
+    if let Ok(data) = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
+        &Validation::default(),
+    ) {
+        return Some(data.claims);
     }
 
-    if let Some(auth_by) = req.headers().get("x-authenticated-by").and_then(|h| h.to_str().ok()) {
-        tracing::info!("Found x-authenticated-by header: {}", auth_by);
-        if auth_by == "better-auth-frontend-proxy" {
-            if let Some(better_auth_id) = req.headers().get("x-better-auth-user-id").and_then(|h| h.to_str().ok()) {
-                tracing::info!("Authenticated via frontend proxy for Better Auth user: {}", better_auth_id);
-                // Use the Better Auth ID directly as the subject
-                // The services module will handle Better Auth users specially
-                let claims = Claims {
-                    sub: better_auth_id.to_string(),
-                    exp: (SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as usize)
-                        + 86400,
-                };
-                req.extensions_mut().insert(claims);
-                return Ok(next.run(req).await);
-            }
-        }
-    } else {
-        tracing::warn!("No x-authenticated-by header found");
-    }
-
-    // Try to get token from Authorization header first (for agent/API access)
-    if let Some(auth_header) = req.headers().get(header::AUTHORIZATION).and_then(|h| h.to_str().ok()) {
-        if let Some(token) = auth_header.strip_prefix("Bearer ") {
-            // Try to decode with backend JWT secret first (for agent tokens)
-            if let Ok(claims) = decode::<Claims>(
-                token,
-                &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
-                &Validation::default(),
-            ) {
-                req.extensions_mut().insert(claims.claims);
-                return Ok(next.run(req).await);
-            }
-            
-            // If that fails, assume it's a better-auth JWT token
-            // In production, you should validate against better-auth JWKS
-            // For now, we'll accept any JWT structure
-            if token.split('.').count() == 3 {
-                // It's a valid JWT format, create a dummy Claims
-                let claims = Claims {
-                    sub: "better-auth-user".to_string(),
-                    exp: (SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as usize)
-                        + 86400,
-                };
-                req.extensions_mut().insert(claims);
-                return Ok(next.run(req).await);
-            }
+    match state.jwks.verify(token).await {
+        Ok(claims) => Some(claims),
+        Err(e) => {
+            // Logged without the token so credentials stay out of the log stream.
+            tracing::warn!("rejected token: {}", e);
+            None
         }
     }
+}
 
-    // For better-auth JWT tokens, we accept them without strict validation
-    // since they're issued by the same system. In production, you should
-    // validate against the JWKS endpoint at /api/auth/jwks
-    // For now, we'll accept any valid JWT structure from better-auth
-    
-    // Try to get session from better-auth cookie as fallback
-    if let Some(cookie_header) = req.headers().get(header::COOKIE).and_then(|h| h.to_str().ok()) {
-        if cookie_header.contains("better-auth.session_token") {
-            let claims = Claims {
-                sub: "better-auth-user".to_string(),
-                exp: (SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as usize)
-                    + 86400,
-            };
-            req.extensions_mut().insert(claims);
-            return Ok(next.run(req).await);
-        }
-    }
+fn bearer_token(req: &Request<Body>) -> Option<String> {
+    req.headers()
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(str::to_owned)
+}
 
-    Err(StatusCode::UNAUTHORIZED)
+/// Extract a token from the WebSocket subprotocol header.
+///
+/// Browsers cannot set `Authorization` on a WebSocket handshake, and putting the
+/// token in the query string leaks it into access logs and referrers. The
+/// standard workaround is to smuggle it through `Sec-WebSocket-Protocol` as a
+/// second protocol entry: `ilog.v1, bearer.<token>`.
+fn websocket_token(req: &Request<Body>) -> Option<String> {
+    req.headers()
+        .get("sec-websocket-protocol")?
+        .to_str()
+        .ok()?
+        .split(',')
+        .map(str::trim)
+        .find_map(|p| p.strip_prefix("bearer.").map(str::to_owned))
 }

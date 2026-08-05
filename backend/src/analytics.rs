@@ -96,7 +96,7 @@ pub async fn get_dashboard_metrics(
 
     // Logs today
     let logs_today: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM logs WHERE timestamp >= $1"
+        "SELECT COUNT(*) FROM logs WHERE time >= $1"
     )
     .bind(today_start)
     .fetch_one(pool)
@@ -104,7 +104,7 @@ pub async fn get_dashboard_metrics(
 
     // Logs yesterday
     let logs_yesterday: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM logs WHERE timestamp >= $1 AND timestamp < $2"
+        "SELECT COUNT(*) FROM logs WHERE time >= $1 AND time < $2"
     )
     .bind(yesterday_start)
     .bind(today_start)
@@ -119,7 +119,7 @@ pub async fn get_dashboard_metrics(
 
     // Errors in last 24h (severity_number >= 17 is ERROR level in OTEL)
     let errors_24h: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM logs WHERE timestamp >= $1 AND severity_number >= 17"
+        "SELECT COUNT(*) FROM logs WHERE time >= $1 AND severity_number >= 17"
     )
     .bind(hours_24_ago)
     .fetch_one(pool)
@@ -127,7 +127,7 @@ pub async fn get_dashboard_metrics(
 
     // Errors in previous 24h
     let errors_previous_24h: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM logs WHERE timestamp >= $1 AND timestamp < $2 AND severity_number >= 17"
+        "SELECT COUNT(*) FROM logs WHERE time >= $1 AND time < $2 AND severity_number >= 17"
     )
     .bind(hours_48_ago)
     .bind(hours_24_ago)
@@ -164,14 +164,14 @@ pub async fn get_log_volume_24h(
 
     let data: Vec<(String, i64, i64)> = sqlx::query_as(
         r#"
-        SELECT 
-            TO_CHAR(date_trunc('hour', timestamp), 'HH24:MI') as hour,
+        SELECT
+            TO_CHAR(date_trunc('hour', time), 'HH24:MI') as hour,
             COUNT(*) as logs,
             COUNT(*) FILTER (WHERE severity_number >= 17) as errors
         FROM logs
-        WHERE timestamp >= $1
-        GROUP BY date_trunc('hour', timestamp)
-        ORDER BY date_trunc('hour', timestamp)
+        WHERE time >= $1
+        GROUP BY date_trunc('hour', time)
+        ORDER BY date_trunc('hour', time)
         "#
     )
     .bind(hours_24_ago)
@@ -270,7 +270,7 @@ pub async fn get_connected_agents(
 
         // Get logs today for this agent's service
         let logs_today: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM logs WHERE service_name = $1 AND timestamp >= $2"
+            "SELECT COUNT(*) FROM logs WHERE service_name = $1 AND time >= $2"
         )
         .bind(&service_name)
         .bind(today_start)
@@ -300,13 +300,13 @@ pub async fn get_7day_ingestion(
 
     let data: Vec<(String, i64)> = sqlx::query_as(
         r#"
-        SELECT 
-            TO_CHAR(date_trunc('day', timestamp), 'YYYY-MM-DD') as date,
+        SELECT
+            TO_CHAR(date_trunc('day', time), 'YYYY-MM-DD') as date,
             COUNT(*) as logs
         FROM logs
-        WHERE timestamp >= $1
-        GROUP BY date_trunc('day', timestamp)
-        ORDER BY date_trunc('day', timestamp)
+        WHERE time >= $1
+        GROUP BY date_trunc('day', time)
+        ORDER BY date_trunc('day', time)
         "#
     )
     .bind(seven_days_ago)

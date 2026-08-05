@@ -16,20 +16,26 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  console.log("[Proxy] Session found for user:", session.user.email);
   const backendPath = path.join("/");
   const url = new URL(`/api/${backendPath}`, serverConfig.backendUrl);
-  console.log("[Proxy] Backend URL:", url.toString());
 
   request.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.append(key, value);
   });
 
+  // Mint a signed JWT for the session. The backend verifies its Ed25519
+  // signature against our JWKS endpoint, so identity is proven cryptographically
+  // rather than asserted by a header this proxy sets.
+  const { token } = await auth.api.getToken({ headers: incomingHeaders });
+
+  if (!token) {
+    console.error("[Proxy] Session valid but token issuance failed");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const requestHeaders = new Headers();
   requestHeaders.set("Content-Type", "application/json");
-  requestHeaders.set("X-User-Email", session.user.email);
-  requestHeaders.set("X-Better-Auth-User-Id", session.user.id);
-  requestHeaders.set("X-Authenticated-By", "better-auth-frontend-proxy");
+  requestHeaders.set("Authorization", `Bearer ${token}`);
 
   const options: RequestInit = {
     method: request.method,

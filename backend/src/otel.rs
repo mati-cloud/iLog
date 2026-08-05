@@ -7,38 +7,89 @@ use crate::{
     models::{LogQuery, OtelLog},
 };
 
+/// Insert a batch of logs in a single statement.
+///
+/// Each column is sent as an array and expanded server-side with `UNNEST`, so a
+/// batch of any size costs one round-trip. The previous implementation issued
+/// one `INSERT` per log, making latency scale linearly with batch size and
+/// putting the network round-trip in the hot path.
 pub async fn ingest_logs(db: &Database, logs: Vec<OtelLog>, service_id: Uuid) -> anyhow::Result<()> {
-    for log in logs {
-        let time = parse_unix_nano(&log.time_unix_nano)?;
-
-        sqlx::query(
-            r#"
-            INSERT INTO logs (
-                time, service_id, trace_id, span_id, trace_flags,
-                severity_text, severity_number, service_name,
-                body, resource_attributes, log_attributes,
-                scope_name, scope_version, scope_attributes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            "#,
-        )
-        .bind(time)
-        .bind(service_id)
-        .bind(log.trace_id)
-        .bind(log.span_id)
-        .bind(log.trace_flags)
-        .bind(log.severity_text)
-        .bind(log.severity_number)
-        .bind(log.service_name)
-        .bind(log.body)
-        .bind(log.resource_attributes.as_ref().map(|v| v as &JsonValue))
-        .bind(log.log_attributes.as_ref().map(|v| v as &JsonValue))
-        .bind(log.scope_name)
-        .bind(log.scope_version)
-        .bind(log.scope_attributes.as_ref().map(|v| v as &JsonValue))
-        .execute(db.pool())
-        .await?;
+    if logs.is_empty() {
+        return Ok(());
     }
+
+    let n = logs.len();
+    let mut times = Vec::with_capacity(n);
+    let mut trace_ids = Vec::with_capacity(n);
+    let mut span_ids = Vec::with_capacity(n);
+    let mut trace_flags = Vec::with_capacity(n);
+    let mut severity_texts = Vec::with_capacity(n);
+    let mut severity_numbers = Vec::with_capacity(n);
+    let mut service_names = Vec::with_capacity(n);
+    let mut bodies = Vec::with_capacity(n);
+    let mut resource_attrs = Vec::with_capacity(n);
+    let mut log_attrs = Vec::with_capacity(n);
+    let mut scope_names = Vec::with_capacity(n);
+    let mut scope_versions = Vec::with_capacity(n);
+    let mut scope_attrs = Vec::with_capacity(n);
+
+    for log in logs {
+        times.push(parse_unix_nano(&log.time_unix_nano)?);
+        trace_ids.push(log.trace_id);
+        span_ids.push(log.span_id);
+        trace_flags.push(log.trace_flags);
+        severity_texts.push(log.severity_text);
+        severity_numbers.push(log.severity_number);
+        service_names.push(log.service_name);
+        bodies.push(log.body);
+        resource_attrs.push(log.resource_attributes);
+        log_attrs.push(log.log_attributes);
+        scope_names.push(log.scope_name);
+        scope_versions.push(log.scope_version);
+        scope_attrs.push(log.scope_attributes);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO logs (
+            time, service_id, trace_id, span_id, trace_flags,
+            severity_text, severity_number, service_name,
+            body, resource_attributes, log_attributes,
+            scope_name, scope_version, scope_attributes
+        )
+        SELECT
+            t, $1, trace_id, span_id, trace_flag,
+            severity_text, severity_number, service_name,
+            body, resource_attributes, log_attributes,
+            scope_name, scope_version, scope_attributes
+        FROM UNNEST(
+            $2::timestamptz[], $3::varchar[], $4::varchar[], $5::int[],
+            $6::varchar[], $7::int[], $8::varchar[], $9::text[],
+            $10::jsonb[], $11::jsonb[], $12::varchar[], $13::varchar[], $14::jsonb[]
+        ) AS batch(
+            t, trace_id, span_id, trace_flag,
+            severity_text, severity_number, service_name, body,
+            resource_attributes, log_attributes,
+            scope_name, scope_version, scope_attributes
+        )
+        "#,
+    )
+    .bind(service_id)
+    .bind(&times)
+    .bind(&trace_ids)
+    .bind(&span_ids)
+    .bind(&trace_flags)
+    .bind(&severity_texts)
+    .bind(&severity_numbers)
+    .bind(&service_names)
+    .bind(&bodies)
+    .bind(&resource_attrs)
+    .bind(&log_attrs)
+    .bind(&scope_names)
+    .bind(&scope_versions)
+    .bind(&scope_attrs)
+    .execute(db.pool())
+    .await?;
 
     Ok(())
 }

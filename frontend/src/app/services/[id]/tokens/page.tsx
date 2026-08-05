@@ -4,8 +4,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Copy,
-  Eye,
-  EyeOff,
   Key,
   MoreHorizontal,
   Plus,
@@ -44,16 +42,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+/**
+ * An agent as returned by `GET /api/services/:id/agents`.
+ *
+ * Deliberately has no `token`: the backend stores only an encrypted key secret
+ * and never returns the token after creation. See `CreatedToken` for the
+ * one-time creation response.
+ */
 interface ServiceToken {
   id: string;
   service_id: string;
   name: string;
-  token: string;
   source_type?: string;
   metadata?: Record<string, unknown>;
   expires_at?: string;
   last_used_at?: string;
   created_at: string;
+}
+
+/**
+ * The 201 body from `POST /api/services/:id/agents` -- the only response that
+ * carries the token. It is not recoverable afterward, so if the operator does
+ * not copy it here the agent has to be reissued.
+ */
+interface CreatedToken extends ServiceToken {
+  token: string;
 }
 
 interface Service {
@@ -72,13 +85,12 @@ export default function TokensPage() {
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [confirmCloseDialog, setConfirmCloseDialog] = useState(false);
-  const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const [newToken, setNewToken] = useState({
     name: "",
     source_type: "all",
     expires_in_days: "",
   });
-  const [createdToken, setCreatedToken] = useState<ServiceToken | null>(null);
+  const [createdToken, setCreatedToken] = useState<CreatedToken | null>(null);
 
   const hasChanges =
     newToken.name !== "" ||
@@ -97,18 +109,6 @@ export default function TokensPage() {
     setNewToken({ name: "", source_type: "all", expires_in_days: "" });
     setCreateDialogOpen(false);
     setConfirmCloseDialog(false);
-  };
-
-  const toggleTokenVisibility = (tokenId: string) => {
-    setVisibleTokens((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(tokenId)) {
-        newSet.delete(tokenId);
-      } else {
-        newSet.add(tokenId);
-      }
-      return newSet;
-    });
   };
 
   const copyToken = (token: string) => {
@@ -137,42 +137,30 @@ export default function TokensPage() {
       ),
     },
     {
-      key: "token",
-      label: "Token",
+      // The token is shown once, in the dialog right after creation. The list
+      // endpoint does not return it and cannot: the backend stores only an
+      // encrypted key secret, so there is no plaintext to reveal or copy here.
+      // This column previously rendered a reveal/copy control over a field the
+      // API never sent, which meant it always displayed `undefined`.
+      key: "id",
+      label: "Agent ID",
       width: "w-[25%]",
-      render: (token) => {
-        const isVisible = visibleTokens.has(token.id);
-        const displayToken = isVisible ? token.token : "••••••••••••••••";
-
-        return (
-          <div className="flex items-center gap-2">
-            <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-              {displayToken.substring(0, 20)}
-              {displayToken.length > 20 ? "..." : ""}
-            </code>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => toggleTokenVisibility(token.id)}
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              {isVisible ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => copyToken(token.token)}
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        );
-      },
+      render: (token) => (
+        <div className="flex items-center gap-2">
+          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+            {token.id.substring(0, 8)}…
+          </code>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => copyToken(token.id)}
+            title="Copy agent ID"
+            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
     },
     {
       key: "source_type",
@@ -226,9 +214,12 @@ export default function TokensPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => copyToken(token.token)}>
+            {/* "Copy Token" used to live here. It copied `token.token`, which
+                the list endpoint does not return, so it silently copied
+                nothing. The token exists only in the creation dialog. */}
+            <DropdownMenuItem onClick={() => copyToken(token.id)}>
               <Copy className="mr-2 h-4 w-4" />
-              Copy Token
+              Copy Agent ID
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -298,7 +289,7 @@ export default function TokensPage() {
       });
 
       if (response.ok) {
-        const token = await response.json();
+        const token: CreatedToken = await response.json();
         setCreatedToken(token);
         setNewToken({ name: "", source_type: "all", expires_in_days: "" });
         setCreateDialogOpen(false);

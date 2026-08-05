@@ -1,15 +1,17 @@
 mod analytics;
 mod auth;
 mod db;
+mod jwks;
 mod models;
 mod otel;
 mod services;
 mod streaming;
 mod tcp_server;
+mod token_crypto;
 
 use axum::{
     extract::{Query, State, WebSocketUpgrade},
-    http::{header, HeaderMap, Method, StatusCode},
+    http::{header, Method, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -24,8 +26,10 @@ use tracing_subscriber::FmtSubscriber;
 use crate::{
     auth::auth_middleware,
     db::Database,
+    jwks::JwksClient,
     models::{Claims, LogQuery, OtelLog},
     streaming::handle_websocket,
+    token_crypto::TokenCrypto,
 };
 
 #[derive(Clone)]
@@ -33,6 +37,9 @@ pub struct AppState {
     db: Arc<Database>,
     jwt_secret: String,
     log_broadcast: broadcast::Sender<OtelLog>,
+    jwks: Arc<JwksClient>,
+    /// Wraps and unwraps agent key secrets. Cheap to clone (holds a cipher).
+    token_crypto: TokenCrypto,
 }
 
 #[tokio::main]
@@ -51,8 +58,35 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::new(&database_url).await?;
     info!("Database connection established");
 
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+    // Required, with no fallback. The previous default
+    // ("your-secret-key-change-in-production") meant any deployment that missed
+    // this var accepted forged backend JWTs from anyone who had read the source.
+    let jwt_secret = std::env::var("JWT_SECRET").map_err(|_| {
+        anyhow::anyhow!(
+            "JWT_SECRET is not set. It signs backend session tokens; there is no \
+             default because a shared default would let anyone forge them. \
+             Generate one with `openssl rand -base64 48`."
+        )
+    })?;
+    if jwt_secret.len() < 32 {
+        anyhow::bail!(
+            "JWT_SECRET is {} chars; at least 32 are required. Generate one with \
+             `openssl rand -base64 48`.",
+            jwt_secret.len()
+        );
+    }
+
+    // Wraps agent key secrets at rest. Built before the listeners start so a
+    // missing or too-short key fails the boot rather than the first agent batch.
+    let token_crypto = token_crypto::TokenCrypto::from_env()?;
+    info!("Agent key secret wrapping initialized");
+
+    // better-auth origin, used to fetch the Ed25519 public keys that sign
+    // frontend session JWTs.
+    let better_auth_url = std::env::var("BETTER_AUTH_URL")
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let jwks = JwksClient::new(&better_auth_url);
+    info!("JWKS verification against {}", better_auth_url);
 
     let db_arc = Arc::new(db);
 
@@ -65,6 +99,8 @@ async fn main() -> anyhow::Result<()> {
         db: Arc::clone(&db_arc),
         jwt_secret,
         log_broadcast: log_tx.clone(),
+        jwks,
+        token_crypto: token_crypto.clone(),
     };
 
     let app = Router::new()
@@ -84,11 +120,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/dashboard/storage-by-service", get(analytics::get_storage_by_service))
         .route("/api/dashboard/agents", get(analytics::get_connected_agents))
         .route("/api/dashboard/7day-ingestion", get(analytics::get_7day_ingestion))
+        // Every route above sits behind auth. `POST /v1/logs` was the one
+        // exception -- an unauthenticated-middleware bearer ingest path -- and it
+        // has been removed along with its handler. Agents ingest over TCP on
+        // TCP_PORT, where the AEAD tag authenticates each batch.
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
         ))
-        .route("/v1/logs", post(ingest_logs))
         .layer(
             CorsLayer::new()
                 .allow_origin([
@@ -125,9 +164,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Spawn TCP server for agent connections
     let tcp_db = Arc::clone(&db_arc);
+    let tcp_token_crypto = token_crypto;
     let tcp_log_tx = log_tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = tcp_server::start_tcp_server(tcp_addr, tcp_db, tcp_log_tx).await {
+        if let Err(e) =
+            tcp_server::start_tcp_server(tcp_addr, tcp_db, tcp_token_crypto, tcp_log_tx).await
+        {
             tracing::error!("TCP server error: {}", e);
         }
     });
@@ -148,25 +190,6 @@ async fn health_check() -> impl IntoResponse {
     }))
 }
 
-async fn ingest_logs(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(logs): Json<Vec<OtelLog>>,
-) -> Result<StatusCode, AppError> {
-    let token = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or_else(|| anyhow::anyhow!("Missing or invalid Authorization header"))?;
-
-    let claims = services::validate_agent_token(state.db.pool(), token)
-        .await
-        .map_err(|_| anyhow::anyhow!("Invalid or expired token"))?;
-
-    otel::ingest_logs(&state.db, logs, claims.service_id).await?;
-    Ok(StatusCode::ACCEPTED)
-}
-
 async fn query_logs(
     State(state): State<AppState>,
     Query(query): Query<LogQuery>,
@@ -181,10 +204,14 @@ async fn stream_logs(
     State(state): State<AppState>,
     Extension(_claims): Extension<Claims>,
 ) -> Response {
-    // Authentication is handled by the auth middleware
-    // Claims extension proves the user is authenticated
+    // Authentication is handled by the auth middleware; the Claims extension
+    // proves the caller is authenticated. The client sends its credential as a
+    // `bearer.<token>` subprotocol entry alongside `ilog.v1`; we must select a
+    // protocol the client offered or the browser aborts the handshake, so we
+    // echo `ilog.v1` and never the entry containing the token.
     let log_rx = state.log_broadcast.subscribe();
-    ws.on_upgrade(move |socket| handle_websocket(socket, state.db, params, log_rx))
+    ws.protocols(["ilog.v1"])
+        .on_upgrade(move |socket| handle_websocket(socket, state.db, params, log_rx))
 }
 
 pub struct AppError(anyhow::Error);

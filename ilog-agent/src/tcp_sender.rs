@@ -6,11 +6,29 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::config::AgentConfig;
+
+/// Upper bound on logs per batch. Was 50, which put a hard ceiling on ingest
+/// throughput regardless of how fast either side could go: a host emitting
+/// 10k logs/sec needed 200 round-trips per second just to keep up.
+const MAX_BATCH_LOGS: usize = 1000;
+
+/// Upper bound on uncompressed message bytes per batch, so a burst of very large
+/// log lines can't build an oversized frame. The wire format caps payloads at
+/// 100 MB; this keeps batches far below that.
+const MAX_BATCH_BYTES: usize = 4 * 1024 * 1024;
+
+/// Once this many logs are buffered, flush without waiting for more.
+const MICRO_BATCH_MIN_LOGS: usize = 64;
+
+/// How long to wait for more logs before shipping a small batch. Bounds the
+/// added latency on a mostly-idle host.
+const MICRO_BATCH_DELAY: Duration = Duration::from_millis(10);
 use crate::crypto::Encryptor;
-use crate::protocol::Frame;
+use crate::protocol::{agent_id_from_token, Frame};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct LogEntry {
@@ -24,16 +42,26 @@ pub struct LogEntry {
 pub struct TcpLogSender {
     config: Arc<AgentConfig>,
     encryptor: Encryptor,
+    /// This agent's id, parsed out of its token. Sent in every frame header so
+    /// the backend can look up our key directly.
+    agent_id: Uuid,
     buffer: Vec<LogEntry>,
     stream: Option<TcpStream>,
 }
 
 impl TcpLogSender {
     pub fn new(config: Arc<AgentConfig>) -> Result<Self> {
-        let encryptor = Encryptor::from_token(&config.agent.token)?;
+        let token = &config.agent.token;
+        let encryptor = Encryptor::from_token(token)?;
+        let agent_id = agent_id_from_token(token).context(
+            "Agent token is malformed: expected the form agt_<agent_id>_<secret>. \
+             Re-issue the token from the iLog dashboard.",
+        )?;
+
         Ok(Self {
             config,
             encryptor,
+            agent_id,
             buffer: Vec::new(),
             stream: None,
         })
@@ -44,27 +72,48 @@ impl TcpLogSender {
         mut rx: mpsc::Receiver<LogEntry>,
     ) -> Result<()> {
         let mut sender = Self::new(config.clone())?;
-        let micro_batch_delay = Duration::from_millis(10);
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
 
         loop {
             tokio::select! {
                 Some(log) = rx.recv() => {
-                    info!("Received log entry: {} - {}", log.service, log.message.chars().take(100).collect::<String>());
+                    // Per-log logging stays at trace: at `info` this allocated a
+                    // String for every line the agent shipped, which is real
+                    // overhead in the hot path and doubles the log volume of any
+                    // host running the agent at debug level.
+                    trace!(service = %log.service, "buffered log entry");
+                    let mut batch_bytes = log.message.len();
                     sender.buffer.push(log);
-                    
-                    tokio::time::sleep(micro_batch_delay).await;
-                    
-                    while let Ok(log) = rx.try_recv() {
-                        info!("Received additional log entry: {} - {}", log.service, log.message.chars().take(100).collect::<String>());
-                        sender.buffer.push(log);
-                        if sender.buffer.len() >= 50 {
+
+                    // Drain whatever is already queued before waiting. Only pay
+                    // the micro-batch delay if the burst is small, so a backlog
+                    // flushes immediately instead of at 10ms per batch.
+                    loop {
+                        while let Ok(log) = rx.try_recv() {
+                            batch_bytes += log.message.len();
+                            sender.buffer.push(log);
+                            if sender.buffer.len() >= MAX_BATCH_LOGS || batch_bytes >= MAX_BATCH_BYTES {
+                                break;
+                            }
+                        }
+
+                        if sender.buffer.len() >= MAX_BATCH_LOGS
+                            || batch_bytes >= MAX_BATCH_BYTES
+                            || sender.buffer.len() >= MICRO_BATCH_MIN_LOGS
+                        {
+                            break;
+                        }
+
+                        tokio::time::sleep(MICRO_BATCH_DELAY).await;
+
+                        // Nothing new arrived during the delay; ship what we have.
+                        if rx.is_empty() {
                             break;
                         }
                     }
-                    
-                    info!("Buffered {} logs, flushing...", sender.buffer.len());
-                    
+
+                    debug!("Flushing {} logs ({} bytes)", sender.buffer.len(), batch_bytes);
+
                     if let Err(e) = sender.flush().await {
                         error!("Failed to flush logs: {}", e);
                         if sender.stream.is_some() {
@@ -112,7 +161,7 @@ impl TcpLogSender {
         let encrypted = self.encryptor.encrypt(&compressed)?;
         let encrypted_len = encrypted.len();
 
-        let frame = Frame::log_batch(encrypted);
+        let frame = Frame::log_batch(self.agent_id, encrypted);
 
         let mut retry_count = 0;
         const MAX_RETRIES: u32 = 3;
@@ -154,8 +203,9 @@ impl TcpLogSender {
     }
 
     async fn send_heartbeat(&mut self) -> Result<()> {
+        // Read the id before `ensure_connected` takes a mutable borrow of self.
+        let frame = Frame::heartbeat(self.agent_id);
         let stream = self.ensure_connected().await?;
-        let frame = Frame::heartbeat();
         frame.write_to(stream).await?;
         Ok(())
     }
@@ -178,6 +228,9 @@ impl TcpLogSender {
     }
 
     fn compress(&self, data: &[u8]) -> Result<Vec<u8>> {
-        lz4::block::compress(data, None, false).context("LZ4 compression failed")
+        // Raw LZ4 block, no size prefix. The backend decompresses with
+        // `lz4_flex::block::decompress` and an explicit capacity, so the two
+        // sides must use this same crate and calling convention.
+        Ok(lz4_flex::block::compress(data))
     }
 }

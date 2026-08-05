@@ -3,17 +3,26 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Nonce,
 };
+use hkdf::Hkdf;
+use sha2::Sha256;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
-use crate::{db::Database, models::OtelLog, otel};
+use crate::{db::Database, models::OtelLog, otel, token_crypto::TokenCrypto};
 
 const MAGIC_BYTES: &[u8; 4] = b"ILOG";
-const VERSION: u8 = 1;
+
+/// Wire protocol version. v2 added the agent id to the frame header; see
+/// `ilog-agent/src/protocol.rs` for the full rationale. Both sides must agree.
+const VERSION: u8 = 2;
 const NONCE_SIZE: usize = 12;
+
+/// Agent-key derivation parameters. Must match `ilog-agent/src/crypto.rs`.
+const KEY_SALT: &[u8] = b"ilog-agent-transport-v2";
+const KEY_INFO: &[u8] = b"ilog agent transport key v2";
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
@@ -38,10 +47,20 @@ impl TryFrom<u8> for FrameType {
 
 pub struct Frame {
     pub frame_type: FrameType,
+    /// Sending agent. `None` on frames the backend originates, such as acks.
+    pub agent_id: Option<uuid::Uuid>,
     pub payload: Vec<u8>,
 }
 
 impl Frame {
+    pub fn ack() -> Self {
+        Self {
+            frame_type: FrameType::Ack,
+            agent_id: None,
+            payload: Vec::new(),
+        }
+    }
+
     pub async fn read_from(stream: &mut TcpStream) -> Result<Self> {
         let mut magic = [0u8; 4];
         stream
@@ -64,6 +83,14 @@ impl Frame {
             .context("Failed to read frame type")?;
         let frame_type = FrameType::try_from(frame_type_byte)?;
 
+        let mut id_bytes = [0u8; 16];
+        stream
+            .read_exact(&mut id_bytes)
+            .await
+            .context("Failed to read agent id")?;
+        let parsed = uuid::Uuid::from_bytes(id_bytes);
+        let agent_id = (!parsed.is_nil()).then_some(parsed);
+
         let payload_len = stream
             .read_u32()
             .await
@@ -81,6 +108,7 @@ impl Frame {
 
         Ok(Self {
             frame_type,
+            agent_id,
             payload,
         })
     }
@@ -89,18 +117,15 @@ impl Frame {
         stream.write_all(MAGIC_BYTES).await?;
         stream.write_u8(VERSION).await?;
         stream.write_u8(self.frame_type as u8).await?;
+        stream
+            .write_all(self.agent_id.unwrap_or(uuid::Uuid::nil()).as_bytes())
+            .await?;
         stream.write_u32(self.payload.len() as u32).await?;
         stream.write_all(&self.payload).await?;
         stream.flush().await?;
         Ok(())
     }
 
-    pub fn ack() -> Self {
-        Self {
-            frame_type: FrameType::Ack,
-            payload: Vec::new(),
-        }
-    }
 }
 
 pub struct Decryptor {
@@ -119,21 +144,17 @@ impl Decryptor {
         Ok(Self::new(&key))
     }
 
+    /// Derive the AEAD key from an agent token with HKDF-SHA256.
+    ///
+    /// Must stay byte-for-byte identical to the agent's derivation in
+    /// `ilog-agent/src/crypto.rs`, including the salt and info strings. The
+    /// former `DefaultHasher` scheme yielded a 32-byte key holding only 64 bits
+    /// of entropy.
     fn derive_key_from_token(token: &str) -> Result<[u8; 32]> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        token.hash(&mut hasher);
-        let hash = hasher.finish();
-
+        let hk = Hkdf::<Sha256>::new(Some(KEY_SALT), token.as_bytes());
         let mut key = [0u8; 32];
-        for (i, chunk) in key.chunks_mut(8).enumerate() {
-            let mut h = DefaultHasher::new();
-            (hash, i).hash(&mut h);
-            chunk.copy_from_slice(&h.finish().to_le_bytes());
-        }
-
+        hk.expand(KEY_INFO, &mut key)
+            .map_err(|_| anyhow::anyhow!("HKDF expand failed"))?;
         Ok(key)
     }
 
@@ -154,7 +175,12 @@ impl Decryptor {
     }
 }
 
-async fn handle_client(mut stream: TcpStream, db: Arc<Database>, log_tx: broadcast::Sender<OtelLog>) {
+async fn handle_client(
+    mut stream: TcpStream,
+    db: Arc<Database>,
+    token_crypto: TokenCrypto,
+    log_tx: broadcast::Sender<OtelLog>,
+) {
     let peer_addr = stream.peer_addr().ok();
     info!("✓ Agent connection established from {:?}", peer_addr);
 
@@ -165,7 +191,15 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>, log_tx: broadca
                 info!("Received frame type {:?} with {} bytes payload from {:?}", frame.frame_type, frame.payload.len(), peer_addr);
                 match frame.frame_type {
                     FrameType::LogBatch => {
-                        match process_log_batch(&frame.payload, &db, &log_tx).await {
+                        match process_log_batch(
+                            frame.agent_id,
+                            &frame.payload,
+                            &db,
+                            &token_crypto,
+                            &log_tx,
+                        )
+                        .await
+                        {
                             Ok((service_id, count)) => {
                                 info!("Processed {} logs from {:?} for service {}", count, peer_addr, service_id);
                                 
@@ -210,43 +244,53 @@ async fn handle_client(mut stream: TcpStream, db: Arc<Database>, log_tx: broadca
 }
 
 async fn process_log_batch(
+    claimed_agent_id: Option<uuid::Uuid>,
     encrypted_payload: &[u8],
     db: &Database,
+    token_crypto: &TokenCrypto,
     log_tx: &broadcast::Sender<OtelLog>,
 ) -> Result<(uuid::Uuid, usize)> {
-    // Fetch all active agent tokens from database
-    let agents: Vec<(uuid::Uuid, uuid::Uuid, String)> = sqlx::query_as(
+    // The agent names itself in the frame header, so we fetch exactly one
+    // candidate key by primary key. Previously this loaded every active agent
+    // and attempted an AEAD decrypt against each, making ingest cost scale with
+    // fleet size. The id is only a hint about which key to try; the decrypt
+    // below is what actually authenticates the batch, so a forged id fails.
+    let agent_id = claimed_agent_id
+        .ok_or_else(|| anyhow::anyhow!("LogBatch frame carried no agent id"))?;
+
+    // Selected into a local tuple rather than a struct: the wrapped secret must
+    // not land in any type that derives `Serialize`.
+    let agent: Option<(uuid::Uuid, Vec<u8>)> = sqlx::query_as(
         r#"
-        SELECT id, service_id, token
+        SELECT service_id, key_secret_encrypted
         FROM agents
-        WHERE expires_at IS NULL OR expires_at > NOW()
+        WHERE id = $1
+          AND (expires_at IS NULL OR expires_at > NOW())
         "#,
     )
-    .fetch_all(db.pool())
+    .bind(agent_id)
+    .fetch_optional(db.pool())
     .await?;
 
-    // Try to decrypt with each agent token
-    let mut decrypted_data = None;
-    let mut authenticated_service_id = None;
-    let mut authenticated_agent_id = None;
+    let (service_id, key_secret_encrypted) =
+        agent.ok_or_else(|| anyhow::anyhow!("Unknown or expired agent {}", agent_id))?;
 
-    for (agent_id, service_id, token) in agents {
-        if let Ok(decryptor) = Decryptor::from_token(&token) {
-            if let Ok(data) = decryptor.decrypt(encrypted_payload) {
-                decrypted_data = Some(data);
-                authenticated_service_id = Some(service_id);
-                authenticated_agent_id = Some(agent_id);
-                break;
-            }
-        }
-    }
-
-    let compressed = decrypted_data.ok_or_else(|| {
-        anyhow::anyhow!("Failed to decrypt with any valid agent token - authentication failed")
+    // Unwrap the stored secret, then rebuild the exact token string the agent
+    // holds. The derivation input is the whole token, unchanged from before this
+    // column was encrypted, which is what keeps the agent side in step.
+    let key_secret = token_crypto.unwrap(&key_secret_encrypted).map_err(|e| {
+        anyhow::anyhow!(
+            "Cannot recover key secret for agent {}: {}. The row was written under \
+             a different TOKEN_ENCRYPTION_KEY, or has been altered.",
+            agent_id,
+            e
+        )
     })?;
+    let token = crate::services::token_from_parts(agent_id, &key_secret);
 
-    let service_id = authenticated_service_id.unwrap();
-    let agent_id = authenticated_agent_id.unwrap();
+    let compressed = Decryptor::from_token(&token)
+        .and_then(|d| d.decrypt(encrypted_payload))
+        .map_err(|_| anyhow::anyhow!("Authentication failed for agent {}", agent_id))?;
 
     // Update last_used_at for the agent
     let _ = sqlx::query("UPDATE agents SET last_used_at = NOW() WHERE id = $1")
@@ -284,6 +328,7 @@ async fn process_log_batch(
 pub async fn start_tcp_server(
     addr: std::net::SocketAddr,
     db: Arc<Database>,
+    token_crypto: TokenCrypto,
     log_tx: broadcast::Sender<OtelLog>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
@@ -293,14 +338,39 @@ pub async fn start_tcp_server(
         match listener.accept().await {
             Ok((stream, _)) => {
                 let db = Arc::clone(&db);
+                let token_crypto = token_crypto.clone();
                 let log_tx = log_tx.clone();
                 tokio::spawn(async move {
-                    handle_client(stream, db, log_tx).await;
+                    handle_client(stream, db, token_crypto, log_tx).await;
                 });
             }
             Err(e) => {
                 error!("Failed to accept connection: {}", e);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pins the exact bytes HKDF produces for a known token.
+    ///
+    /// The agent derives its transport key independently in
+    /// `ilog-agent/src/crypto.rs` and asserts this same vector. Nothing at
+    /// compile time links the two implementations, so if one side's salt, info
+    /// string, or hash changes, the only symptom in production would be every
+    /// agent silently failing to authenticate. These paired tests turn that into
+    /// a build failure instead.
+    #[test]
+    fn derived_key_matches_agent_vector() {
+        let key = Decryptor::derive_key_from_token("agt_test_token").unwrap();
+        let hex: String = key.iter().map(|b| format!("{:02x}", b)).collect();
+
+        assert_eq!(
+            hex, "26491796d51fdc101b48bc0a41d707eeab13e958e00cb4caf4a4a0e7f9901dc4",
+            "agent key derivation changed; update ilog-agent crypto.rs to match"
+        );
     }
 }

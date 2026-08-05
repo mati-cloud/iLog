@@ -80,12 +80,16 @@ pub struct UpdateService {
     pub source_type: Option<String>,
 }
 
+/// An agent row as the backend handles it.
+///
+/// Carries no secret. `key_secret_encrypted` is deliberately absent so no query
+/// can select the wrapped secret into a type that derives `Serialize`; the TCP
+/// ingest path reads that column into a local tuple instead.
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct Agent {
     pub id: Uuid,
     pub service_id: Uuid,
     pub name: String,
-    pub token: String,
     pub source_type: String,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -99,12 +103,6 @@ pub struct CreateAgent {
     pub expires_in_days: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AgentClaims {
-    pub service_id: Uuid,
-    pub agent_id: Uuid,
-}
-
 // Safe agent response that excludes the token
 #[derive(Debug, Serialize, Clone)]
 pub struct AgentResponse {
@@ -115,4 +113,22 @@ pub struct AgentResponse {
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Response for agent creation -- the one and only time the token is returned.
+///
+/// Separate from [`AgentResponse`] so the token cannot leak onto a list or get
+/// route by someone reusing the common type. The plaintext token exists only in
+/// this struct, on the way out of `create_agent`.
+#[derive(Debug, Serialize, Clone)]
+pub struct AgentCreatedResponse {
+    pub id: Uuid,
+    pub service_id: Uuid,
+    pub name: String,
+    pub source_type: String,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    /// Not stored anywhere in recoverable form. Lost if the operator loses it.
+    pub token: String,
 }

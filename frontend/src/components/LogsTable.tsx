@@ -198,43 +198,23 @@ export default function LogsTable({ serviceFilter }: LogsTableProps) {
     // Connect to WebSocket using current service
     const connectWebSocket = async () => {
       try {
-        // Get JWT token for WebSocket authentication
-        console.log("Attempting to get JWT token...");
         const jwtTokenResponse = await token();
-        console.log("Token response:", jwtTokenResponse);
-        
-        // Check if we have a valid token in the response
-        const jwtToken = (jwtTokenResponse as any)?.data?.token;
-        
-        if (!jwtToken) {
-          console.error("No JWT token available for WebSocket connection", jwtTokenResponse);
-          // Fallback: try to get session token from cookies
-          const cookies = document.cookie.split(';');
-          const sessionCookie = cookies.find(c => c.trim().startsWith('better-auth.session_token='));
-          if (sessionCookie) {
-            const sessionToken = sessionCookie.split('=')[1];
-            console.log("Using session token as fallback");
-            const fallbackWsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${sessionToken}`;
-            console.log("Connecting to WebSocket with session token");
-            const fallbackWs = new WebSocket(fallbackWsUrl);
-            wsRef.current = fallbackWs;
-          } else {
-            console.error("No session token found in cookies either");
-            return;
-          }
-        } else {
-          // Use JWT token
-          console.log("Using JWT token for WebSocket");
-          const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}&token=${jwtToken}`;
-          console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, 'token=***'));
+        const jwtToken = (jwtTokenResponse as { data?: { token?: string } })
+          ?.data?.token;
 
-          const ws = new WebSocket(wsUrl);
-          wsRef.current = ws;
+        if (!jwtToken) {
+          console.error("No JWT available for WebSocket connection");
+          return;
         }
 
-        // Set up WebSocket handlers
-        const ws = wsRef.current;
-        if (!ws) return;
+        // The token travels as a WebSocket subprotocol rather than a query
+        // parameter, so it never lands in server access logs. Browsers forbid
+        // custom headers on the handshake, so this is the standard workaround;
+        // the server selects `ilog.v1` and reads the credential from the
+        // `bearer.` entry.
+        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}`;
+        const ws = new WebSocket(wsUrl, ["ilog.v1", `bearer.${jwtToken}`]);
+        wsRef.current = ws;
 
         ws.onopen = () => {
           console.log("WebSocket connected");
