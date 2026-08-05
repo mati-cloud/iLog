@@ -1,0 +1,103 @@
+# iLog — Frontend image (per-arch build, multi-arch manifest)
+name: Frontend Image
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    branches: [main]
+    paths:
+      - frontend/**
+      - .github/workflows/frontend.yml
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository is mati-cloud/iLog; GHCR paths must be lowercase, and the
+  # published name is ilog-frontend (dash, not a nested path) because that is
+  # what the README tells people to pull.
+  IMAGE: ghcr.io/mati-cloud/ilog-frontend
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: blacksmith-4vcpu-ubuntu-2404
+            arch: amd64
+            platform: linux/amd64
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+            arch: arm64
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Blacksmith's builder keeps layers on a sticky NVMe disk, so the
+      # registry buildcache round-trip the GitLab pipeline needed is gone.
+      - uses: useblacksmith/setup-docker-builder@v1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: useblacksmith/build-push-action@v2
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
+
+  manifest:
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: useblacksmith/setup-docker-builder@v1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push multi-arch manifest
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          FULL="${{ env.IMAGE }}"
+          docker buildx imagetools create \
+            --tag "${FULL}:${TAG}" \
+            "${FULL}:${TAG}-amd64" \
+            "${FULL}:${TAG}-arm64"
+          # :latest tracks the tip of main, same as the old GitLab pipeline.
+          docker buildx imagetools create --tag "${FULL}:latest" "${FULL}:${TAG}"

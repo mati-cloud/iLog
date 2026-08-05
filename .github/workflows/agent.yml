@@ -1,0 +1,110 @@
+# iLog — Agent binaries + GitHub release (v-tags only)
+# Static musl binaries built on native runners per arch, then attached to a
+# GitHub release. No cross-compilation, no container.
+name: Agent Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+concurrency:
+  group: agent-${{ github.ref }}
+  cancel-in-progress: false # a release upload must not be interrupted
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "3"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: blacksmith-8vcpu-ubuntu-2404
+            arch: amd64
+            target: x86_64-unknown-linux-musl
+          - runner: blacksmith-8vcpu-ubuntu-2404-arm
+            arch: arm64
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # actions/cache is transparently routed to Blacksmith's colocated cache,
+      # so this replaces the GitLab per-arch .cargo/ + target/ cache keys.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ilog-agent
+          key: ${{ matrix.target }}
+
+      - name: Build agent
+        working-directory: ilog-agent
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --locked --target ${{ matrix.target }} --features all
+
+      - name: Stage binary
+        run: |
+          mkdir -p artifacts
+          cp "ilog-agent/target/${{ matrix.target }}/release/ilog-agent" \
+             "artifacts/ilog-agent-linux-${{ matrix.arch }}"
+          chmod +x "artifacts/ilog-agent-linux-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-binary-${{ matrix.arch }}
+          path: artifacts/ilog-agent-linux-${{ matrix.arch }}
+          retention-days: 1
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: write # create the release and upload assets
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agent-binary-*
+          merge-multiple: true
+          path: artifacts/
+
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum ilog-agent-linux-* > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          # printf rather than a heredoc: a heredoc delimiter has to sit at
+          # column 0, which a YAML block scalar cannot express.
+          {
+            printf 'Release %s\n\n## Installation\n\n' "$VERSION"
+            for ARCH in amd64 arm64; do
+              printf '### Linux (%s)\n```bash\n' "$ARCH"
+              printf 'curl -L %s/ilog-agent-linux-%s -o ilog-agent\n' "$BASE" "$ARCH"
+              printf 'chmod +x ilog-agent\nsudo mv ilog-agent /usr/local/bin/\n```\n\n'
+            done
+            printf 'Verify with `sha256sum -c SHA256SUMS`.\n'
+          } > notes.md
+          gh release create "$TAG" \
+            --title "iLog Agent v$VERSION" \
+            --notes-file notes.md \
+            artifacts/ilog-agent-linux-amd64 \
+            artifacts/ilog-agent-linux-arm64 \
+            artifacts/SHA256SUMS
