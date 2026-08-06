@@ -1,0 +1,103 @@
+# iLog — Agent image (per-arch build, multi-arch manifest)
+#
+# Separate from agent.yml, which builds standalone static binaries for a GitHub
+# release (bare-metal installs). This produces the container image the Kubernetes
+# DaemonSet runs. Same source, two delivery paths.
+name: Agent Image
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    branches: [main]
+    paths:
+      - ilog-agent/**
+      - .github/workflows/agent-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: agent-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/mati-cloud/ilog-agent
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # 4 vCPU rather than the backend's 8: the agent is a much smaller
+          # crate graph, statically linked, with no sqlx or OpenSSL.
+          - runner: blacksmith-4vcpu-ubuntu-2404
+            arch: amd64
+            platform: linux/amd64
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+            arch: arm64
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: useblacksmith/setup-docker-builder@v1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: useblacksmith/build-push-action@v2
+        with:
+          context: ./ilog-agent
+          file: ./ilog-agent/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
+
+  manifest:
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: useblacksmith/setup-docker-builder@v1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push multi-arch manifest
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          FULL="${{ env.IMAGE }}"
+          docker buildx imagetools create \
+            --tag "${FULL}:${TAG}" \
+            "${FULL}:${TAG}-amd64" \
+            "${FULL}:${TAG}-arm64"
+          docker buildx imagetools create --tag "${FULL}:latest" "${FULL}:${TAG}"
