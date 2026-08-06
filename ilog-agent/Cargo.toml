@@ -1,6 +1,6 @@
 [package]
 name = "ilog-agent"
-version = "1.3.0"
+version = "1.4.0"
 edition = "2021"
 
 [dependencies]
@@ -40,9 +40,6 @@ tracing-subscriber = "0.3"
 # Time
 chrono = "0.4"
 
-# File watching
-notify = { version = "6", optional = true }
-
 # Journald (Linux systemd)
 systemd = { version = "0.10", optional = true }
 
@@ -64,7 +61,7 @@ glob = "0.3"
 
 [features]
 default = ["file"]
-file = ["notify"]
+file = []
 journald = ["systemd"]
 docker = ["bollard"]
 http = ["reqwest"]
