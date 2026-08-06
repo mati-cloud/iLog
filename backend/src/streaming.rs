@@ -33,7 +33,6 @@ pub async fn handle_websocket(
             end_time: Some(chrono::Utc::now()),
             limit: Some(100),
             search: None,
-            token: None,
         };
         
         match crate::otel::query_logs(&db_clone, initial_query).await {
