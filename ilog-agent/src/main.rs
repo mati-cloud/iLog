@@ -21,11 +21,11 @@ use providers::LogProvider;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to configuration file
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(short, long, value_name = "FILE", default_value = "/etc/ilog/config.toml")]
     config: PathBuf,
-    
+
     /// Path to parser configuration file (log sources)
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(short, long, value_name = "FILE", default_value = "/etc/ilog/sources.yaml")]
     parser: PathBuf,
 }
 

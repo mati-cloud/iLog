@@ -63,6 +63,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [ -d "$CONFIG_DIR" ]; then
         rm -rf "$CONFIG_DIR"
         echo "✓ Config directory removed"
+    fi
+    if id ilog >/dev/null 2>&1; then
+        userdel ilog
+        echo "✓ User ilog removed"
     else
         echo "✓ Config directory not found"
     fi
