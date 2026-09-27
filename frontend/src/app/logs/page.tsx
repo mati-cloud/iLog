@@ -3,11 +3,7 @@ import { redirect } from "next/navigation";
 import LogsTable from "@/components/LogsTable";
 import { auth } from "@/lib/auth";
 
-export default async function LogsPage({
-  searchParams,
-}: {
-  searchParams: { service?: string };
-}) {
+export default async function LogsPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -17,8 +13,9 @@ export default async function LogsPage({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <LogsTable serviceFilter={searchParams.service} />
+    // Viewport minus the layout footer (57px), so only the list scrolls.
+    <div className="flex h-[calc(100dvh-57px)] flex-col">
+      <LogsTable />
     </div>
   );
 }

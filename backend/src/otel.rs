@@ -95,82 +95,46 @@ pub async fn ingest_logs(db: &Database, logs: Vec<OtelLog>, service_id: Uuid) ->
 }
 
 pub async fn query_logs(db: &Database, query: LogQuery) -> anyhow::Result<Vec<OtelLog>> {
-    let limit = query.limit.unwrap_or(100).min(1000);
+    let limit = query.limit.unwrap_or(100).clamp(1, 1000);
     let start_time = query.start_time.unwrap_or_else(|| {
         Utc::now() - chrono::Duration::hours(24)
     });
     let end_time = query.end_time.unwrap_or_else(Utc::now);
 
-    let mut sql = String::from(
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
-        SELECT 
+        SELECT
             time, trace_id, span_id, trace_flags,
             severity_text, severity_number, service_name,
             body, resource_attributes, log_attributes,
             scope_name, scope_version, scope_attributes
         FROM logs
-        WHERE time >= $1 AND time <= $2
-        "#,
+        WHERE time >= "#,
     );
-
-    let mut param_count = 2;
-
-    if query.service.is_some() {
-        param_count += 1;
-        sql.push_str(&format!(" AND service_id = ${}::uuid", param_count));
-    }
-
-    if query.service_name.is_some() {
-        param_count += 1;
-        sql.push_str(&format!(" AND service_name = ${}", param_count));
-    }
-
-    if query.severity.is_some() {
-        param_count += 1;
-        sql.push_str(&format!(" AND severity_number >= ${}", param_count));
-    }
-
-    if query.trace_id.is_some() {
-        param_count += 1;
-        sql.push_str(&format!(" AND trace_id = ${}", param_count));
-    }
-
-    if query.search.is_some() {
-        param_count += 1;
-        sql.push_str(&format!(" AND body ILIKE ${}", param_count));
-    }
-
-    sql.push_str(" ORDER BY time DESC");
-    param_count += 1;
-    sql.push_str(&format!(" LIMIT ${}", param_count));
-
-    let mut query_builder = sqlx::query_as::<_, LogRow>(&sql)
-        .bind(start_time)
-        .bind(end_time);
+    qb.push_bind(start_time).push(" AND time <= ").push_bind(end_time);
 
     if let Some(service) = &query.service {
-        query_builder = query_builder.bind(service);
+        qb.push(" AND service_id = ").push_bind(service.clone()).push("::uuid");
     }
-
-    if let Some(service) = &query.service_name {
-        query_builder = query_builder.bind(service);
+    if let Some(name) = &query.service_name {
+        qb.push(" AND service_name = ").push_bind(name.clone());
     }
-
     if let Some(severity) = query.severity {
-        query_builder = query_builder.bind(severity);
+        qb.push(" AND severity_number >= ").push_bind(severity);
     }
-
     if let Some(trace_id) = &query.trace_id {
-        query_builder = query_builder.bind(trace_id);
+        qb.push(" AND trace_id = ").push_bind(trace_id.clone());
     }
-
     if let Some(search) = &query.search {
-        query_builder = query_builder.bind(format!("%{}%", search));
+        qb.push(" AND body ILIKE ").push_bind(format!("%{}%", search));
+    }
+    if let Some(q) = &query.q {
+        crate::query::push_where(&mut qb, &crate::query::parse(q));
     }
 
-    query_builder = query_builder.bind(limit);
+    qb.push(" ORDER BY time DESC LIMIT ").push_bind(limit);
 
-    let rows = query_builder.fetch_all(db.pool()).await?;
+    let rows = qb.build_query_as::<LogRow>().fetch_all(db.pool()).await?;
 
     let logs = rows
         .into_iter()

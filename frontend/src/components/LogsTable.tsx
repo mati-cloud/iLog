@@ -1,881 +1,370 @@
 "use client";
 
-import {
-  ChevronDown,
-  ChevronUp,
-  Filter,
-  Pause,
-  Play,
-  RefreshCw,
-  Search,
-  Settings2,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LogRow } from "@/components/log-renderers/LogRow";
-import { LogTableHeaders } from "@/components/log-renderers/LogTableHeaders";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { LogLine } from "@/components/logs/LogLine";
+import { QueryBar } from "@/components/logs/QueryBar";
 import { ServiceSelector } from "@/components/ServiceSelector";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { token } from "@/lib/auth-client";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Table, TableBody } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { signOut, token } from "@/lib/auth-client";
+  filterTerm,
+  type LogEntry,
+  matches,
+  normalize,
+  parseQuery,
+  withTerm,
+} from "@/lib/log-query";
 import { config } from "@/lib/runtime-config";
-import {
-  detectLogSourceType,
-  type LogAttributes,
-  type LogSourceType,
-} from "@/lib/log-utils";
 
-type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
+const RANGES = [
+  ["15m", 15 * 60e3],
+  ["1h", 60 * 60e3],
+  ["6h", 6 * 60 * 60e3],
+  ["24h", 24 * 60 * 60e3],
+  ["3d", 3 * 24 * 60 * 60e3],
+] as const;
+type Range = (typeof RANGES)[number][0];
+const rangeMs = (r: Range) => RANGES.find(([k]) => k === r)?.[1] ?? 60 * 60e3;
 
-interface Log {
+const PAGE = 1000;
+const MAX_LINES = 3000;
+
+interface Service {
   id: string;
-  timestamp: string;
-  level: LogLevel;
-  method?: string;
-  status?: string;
-  ipAddress?: string;
-  source: string;
-  filePath?: string; // Directory path for file logs
-  message: string;
-  sourceType?: string; // 'docker', 'http', etc.
-  container?: string;
-  log_attributes?: LogAttributes; // Raw log attributes for source type detection
-  requestData?: {
-    headers?: Record<string, string>;
-    body?: string;
-    query?: Record<string, string>;
-    duration?: number;
+  name: string;
+}
+
+function readUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const r = p.get("range");
+  return {
+    service: p.get("service"),
+    q: p.get("q") ?? "",
+    range: (RANGES.some(([k]) => k === r) ? r : "1h") as Range,
   };
 }
 
-type SortField = "timestamp" | "level" | "source" | "message";
-type SortDirection = "asc" | "desc" | null;
+export default function LogsTable() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [service, setService] = useState<Service | null>(null);
+  const [pickService, setPickService] = useState(false);
 
-interface SearchSuggestion {
-  text: string;
-  column: string;
-  logId: string;
-}
+  const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
+  const [range, setRange] = useState<Range>("1h");
+  const [live, setLive] = useState(true);
 
-interface LogsTableProps {
-  serviceFilter?: string;
-}
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [pending, setPending] = useState<LogEntry[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState<Set<string>>(new Set());
 
-export default function LogsTable({ serviceFilter }: LogsTableProps) {
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchSuggestions, setSearchSuggestions] = useState<
-    SearchSuggestion[]
-  >([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedLevels, setSelectedLevels] = useState<LogLevel[]>([
-    "INFO",
-    "WARN",
-    "ERROR",
-    "DEBUG",
-  ]);
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [sortField, setSortField] = useState<SortField>("timestamp");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [isLiveStreaming, setIsLiveStreaming] = useState(true);
-  const [logs, setLogs] = useState<Log[]>([]);
-  const [showServiceSelector, setShowServiceSelector] = useState(false);
-  const [currentService, setCurrentService] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  // Fixed columns - always show Time, Level, Source, Message
-  const [visibleColumns, setVisibleColumns] = useState({
-    timestamp: true,
-    level: true,
-    source: true,
-    filePath: true,
-    message: true,
-  });
+  const seen = useRef(new Set<string>());
+  const atTop = useRef(true);
+  const list = useRef<VirtuosoHandle>(null);
+  const terms = useMemo(() => parseQuery(query), [query]);
 
-  const allServices = useMemo(() => {
-    return Array.from(new Set(logs.map((log) => log.source))).sort();
-  }, [logs]);
-
-  // Apply service filter from URL if provided
-  useMemo(() => {
-    if (serviceFilter && !selectedServices.includes(serviceFilter)) {
-      setSelectedServices([serviceFilter]);
-    }
-  }, [serviceFilter, selectedServices.includes]);
-
+  // Initial state from the URL, then the service list.
   useEffect(() => {
-    const fetchServices = async () => {
-      try {
-        const response = await fetch("/api/proxy/services", {
-          credentials: "include",
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setServices(data);
-
-          // Always show selector modal when no service is selected
-          const urlParams = new URLSearchParams(window.location.search);
-          const serviceId = urlParams.get("service");
-
-          if (serviceId && data.length > 0) {
-            const service = data.find(
-              (s: { id: string; name: string }) => s.id === serviceId,
-            );
-            if (service) {
-              setCurrentService(service);
-            } else {
-              // Service not found, show selector
-              setShowServiceSelector(true);
-            }
-          } else {
-            // No service selected OR no services exist, show selector
-            setShowServiceSelector(true);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch services:", error);
-      }
-    };
-
-    fetchServices();
+    const u = readUrl();
+    setDraft(u.q);
+    setQuery(u.q);
+    setRange(u.range);
+    fetch("/api/proxy/services", { credentials: "include" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      )
+      .then((data: Service[]) => {
+        setServices(data);
+        const found =
+          data.find((s) => s.id === u.service) ??
+          (data.length === 1 ? data[0] : null);
+        if (found) setService(found);
+        else setPickService(true);
+      })
+      .catch((e) => {
+        setStatus("error");
+        setError(`Could not load services: ${e.message}`);
+      });
   }, []);
 
-  const handleServiceSelect = (serviceId: string) => {
-    const service = services.find((s) => s.id === serviceId);
-    if (service) {
-      setCurrentService(service);
-      const url = new URL(window.location.href);
-      url.searchParams.set("service", serviceId);
-      window.history.pushState({}, "", url);
-      // Clear logs and reconnect WebSocket
-      setLogs([]);
-    }
-  };
-
-  // WebSocket connection for real-time logs
+  // Keep the URL shareable.
   useEffect(() => {
-    if (!isLiveStreaming || !currentService) {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      return;
-    }
+    if (!service) return;
+    const p = new URLSearchParams({ service: service.id, range });
+    if (query) p.set("q", query);
+    window.history.replaceState(null, "", `?${p}`);
+  }, [service, query, range]);
 
-    // Connect to WebSocket using current service
-    const connectWebSocket = async () => {
-      try {
-        const jwtTokenResponse = await token();
-        const jwtToken = (jwtTokenResponse as { data?: { token?: string } })
-          ?.data?.token;
+  // History for the current service, query and range.
+  useEffect(() => {
+    if (!service) return;
+    const ctrl = new AbortController();
+    setStatus("loading");
+    setPending([]);
+    setOpen(new Set());
+    const p = new URLSearchParams({
+      service: service.id,
+      start_time: new Date(Date.now() - rangeMs(range)).toISOString(),
+      limit: String(PAGE),
+    });
+    if (query.trim()) p.set("q", query);
+    fetch(`/api/proxy/logs/query?${p}`, {
+      credentials: "include",
+      signal: ctrl.signal,
+    })
+      .then(async (r) => {
+        if (!r.ok)
+          throw new Error(
+            (await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`,
+          );
+        return r.json();
+      })
+      .then((rows: unknown[]) => {
+        const entries = rows.map((r) =>
+          normalize(r as Parameters<typeof normalize>[0]),
+        );
+        seen.current = new Set(entries.map((e) => e.key));
+        setLogs(entries);
+        setStatus("ready");
+      })
+      .catch((e) => {
+        if (ctrl.signal.aborted) return;
+        setStatus("error");
+        setError(e.message);
+      });
+    return () => ctrl.abort();
+  }, [service, query, range]);
 
-        if (!jwtToken) {
-          console.error("No JWT available for WebSocket connection");
+  // Live tail. New lines that match go on top; while the reader is scrolled
+  // down they wait in `pending` so the page never moves under them.
+  useEffect(() => {
+    if (!live || !service) return;
+    let ws: WebSocket | null = null;
+    let closed = false;
+    token().then((res) => {
+      const jwt = (res as { data?: { token?: string } })?.data?.token;
+      if (!jwt || closed) return;
+      ws = new WebSocket(
+        `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${service.id}`,
+        ["ilog.v1", `bearer.${jwt}`],
+      );
+      ws.onmessage = (ev) => {
+        let entry: LogEntry;
+        try {
+          entry = normalize(JSON.parse(ev.data));
+        } catch {
           return;
         }
-
-        // The token travels as a WebSocket subprotocol rather than a query
-        // parameter, so it never lands in server access logs. Browsers forbid
-        // custom headers on the handshake, so this is the standard workaround;
-        // the server selects `ilog.v1` and reads the credential from the
-        // `bearer.` entry.
-        const wsUrl = `${config.NEXT_PUBLIC_WS_URL}/api/logs/stream?service=${currentService.id}`;
-        const ws = new WebSocket(wsUrl, ["ilog.v1", `bearer.${jwtToken}`]);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          console.log("WebSocket connected");
-        };
-
-        let messageCount = 0;
-        ws.onmessage = (event) => {
-          messageCount++;
-          console.log(`WebSocket message #${messageCount} received`);
-          try {
-            const logData = JSON.parse(event.data);
-            if (messageCount <= 3) {
-              console.log("WebSocket received log:", logData);
-            }
-
-            const timestamp =
-              logData.timeUnixNano ||
-              logData.time_unix_nano ||
-              logData.time ||
-              logData.timestamp;
-            let formattedTime = "-";
-            
-            if (messageCount <= 3) {
-              console.log("Timestamp value:", timestamp, "Type:", typeof timestamp);
-            }
-
-            try {
-              let date: Date;
-
-              if (typeof timestamp === "string" && /^\d+$/.test(timestamp)) {
-                const nanos = BigInt(timestamp);
-                const millis = Number(nanos / BigInt(1000000));
-                date = new Date(millis);
-              } else if (timestamp) {
-                date = new Date(timestamp);
-              } else {
-                console.error("No timestamp found in log data");
-                date = new Date();
-              }
-
-              if (!Number.isNaN(date.getTime())) {
-                formattedTime = `${date.toLocaleTimeString("en-US", {
-                  hour12: false,
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}.${date.getMilliseconds().toString().padStart(3, "0")}`;
-              } else {
-                console.error("Invalid date after parsing:", date);
-              }
-            } catch (e) {
-              console.error("Error parsing timestamp:", timestamp, e);
-            }
-
-            let attrs = logData.logAttributes || logData.log_attributes;
-            
-            // Parse log_attributes if it's a JSON string
-            if (typeof attrs === 'string') {
-              try {
-                attrs = JSON.parse(attrs);
-              } catch (e) {
-                console.error('Failed to parse log_attributes:', e);
-                attrs = {};
-              }
-            }
-            
-            const sourceType = attrs?.source_type || "unknown";
-
-            let sourceName = "unknown";
-            let directoryPath: string | undefined;
-
-            if (sourceType === "docker") {
-              sourceName =
-                attrs?.container ||
-                logData.serviceName ||
-                logData.service_name ||
-                logData.service ||
-                "unknown";
-            } else if (sourceType === "file") {
-              const fullPath =
-                attrs?.file_path ||
-                logData.serviceName ||
-                logData.service_name ||
-                logData.service;
-              if (fullPath) {
-                const parts = fullPath.split("/");
-                const filename = parts.pop() || fullPath;
-                sourceName = filename;
-
-                const dirPath = parts.join("/");
-                if (dirPath && dirPath.length > 0) {
-                  directoryPath = dirPath;
-                }
-              } else {
-                sourceName = "unknown";
-              }
-            } else if (sourceType === "journald") {
-              sourceName =
-                attrs?.unit ||
-                logData.serviceName ||
-                logData.service_name ||
-                logData.service ||
-                "unknown";
-            } else {
-              sourceName =
-                logData.serviceName ||
-                logData.service_name ||
-                logData.service ||
-                "unknown";
-            }
-
-            const newLog: Log = {
-              id: logData.id || `log-${Date.now()}-${messageCount}`,
-              timestamp: formattedTime,
-              level: (
-                logData.severity_text ||
-                logData.level ||
-                "INFO"
-              ).toUpperCase() as LogLevel,
-              method: attrs?.method || "",
-              status: attrs?.status || "",
-              ipAddress: attrs?.ip || "",
-              source: sourceName,
-              filePath: directoryPath,
-              message: logData.body || logData.message || logData.Body || "",
-              sourceType,
-              container: attrs?.container,
-              log_attributes: attrs as LogAttributes,
-              requestData: attrs
-                ? {
-                    headers: attrs.headers,
-                    body: attrs.body,
-                    query: attrs.query,
-                    duration: attrs.duration,
-                  }
-                : undefined,
-            };
-
-            setLogs((prev) => {
-              const updated = [newLog, ...prev].slice(0, 1000);
-              return updated;
-            });
-          } catch (error) {
-            console.error(`Error parsing log message #${messageCount}:`, error, event.data);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-        };
-
-        ws.onclose = (event) => {
-          console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason, "Clean:", event.wasClean);
-          console.log(`Total messages received before close: ${messageCount}`);
-        };
-      } catch (error) {
-        console.error("Failed to connect WebSocket:", error);
-      }
-    };
-
-    connectWebSocket();
-
+        if (seen.current.has(entry.key) || !matches(entry, terms)) return;
+        seen.current.add(entry.key);
+        if (atTop.current)
+          setLogs((prev) => [entry, ...prev].slice(0, MAX_LINES));
+        else setPending((prev) => [entry, ...prev].slice(0, MAX_LINES));
+      };
+    });
     return () => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
+      closed = true;
+      ws?.close();
     };
-  }, [isLiveStreaming, currentService]);
+  }, [live, service, terms]);
 
-  // Generate search suggestions
-  useEffect(() => {
-    if (!searchQuery) {
-      setSearchSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
+  const showPending = useCallback(() => {
+    setLogs((prev) => [...pending, ...prev].slice(0, MAX_LINES));
+    setPending([]);
+    list.current?.scrollToIndex({ index: 0 });
+  }, [pending]);
 
-    const suggestions: SearchSuggestion[] = [];
-    const query = searchQuery.toLowerCase();
-
-    logs.forEach((log) => {
-      if (log.message.toLowerCase().includes(query)) {
-        suggestions.push({
-          text: log.message,
-          column: "Message",
-          logId: log.id,
-        });
-      }
-      if (log.source.toLowerCase().includes(query)) {
-        suggestions.push({ text: log.source, column: "Source", logId: log.id });
-      }
-      if (log.ipAddress?.toLowerCase().includes(query)) {
-        suggestions.push({
-          text: log.ipAddress,
-          column: "IP Address",
-          logId: log.id,
-        });
-      }
-      if (log.method?.toLowerCase().includes(query)) {
-        suggestions.push({ text: log.method, column: "Method", logId: log.id });
-      }
-    });
-
-    const uniqueSuggestions = suggestions
-      .filter(
-        (s, i, arr) =>
-          arr.findIndex((t) => t.text === s.text && t.column === s.column) ===
-          i,
-      )
-      .slice(0, 5);
-
-    setSearchSuggestions(uniqueSuggestions);
-    setShowSuggestions(true);
-  }, [searchQuery, logs]);
-
-  const filteredLogs = useMemo(() => {
-    let filtered = logs;
-
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (log) =>
-          log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          log.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          log.ipAddress?.toLowerCase().includes(searchQuery.toLowerCase()),
-      );
-    }
-
-    filtered = filtered.filter((log) => selectedLevels.includes(log.level));
-
-    if (selectedServices.length > 0) {
-      filtered = filtered.filter((log) =>
-        selectedServices.includes(log.source),
-      );
-    }
-
-    // Sort
-    if (sortDirection !== null) {
-      filtered.sort((a, b) => {
-        let comparison = 0;
-        if (sortField === "timestamp") {
-          comparison = a.timestamp.localeCompare(b.timestamp);
-        } else if (sortField === "level") {
-          comparison = a.level.localeCompare(b.level);
-        } else if (sortField === "source") {
-          comparison = a.source.localeCompare(b.source);
-        } else if (sortField === "message") {
-          comparison = a.message.localeCompare(b.message);
-        }
-        return sortDirection === "asc" ? comparison : -comparison;
-      });
-    }
-
-    return filtered;
-  }, [
-    logs,
-    searchQuery,
-    selectedLevels,
-    selectedServices,
-    sortField,
-    sortDirection,
-  ]);
-
-  // Detect predominant log source type from filtered logs
-  const predominantSourceType = useMemo((): LogSourceType => {
-    if (filteredLogs.length === 0) return "file";
-
-    const typeCounts: Record<LogSourceType, number> = {
-      http: 0,
-      file: 0,
-      docker: 0,
-      journald: 0,
-      unknown: 0,
-    };
-
-    filteredLogs.forEach((log) => {
-      const sourceType = detectLogSourceType(log.log_attributes);
-      typeCounts[sourceType]++;
-    });
-
-    let maxCount = 0;
-    let predominant: LogSourceType = "file";
-
-    (Object.keys(typeCounts) as LogSourceType[]).forEach((type) => {
-      if (typeCounts[type] > maxCount) {
-        maxCount = typeCounts[type];
-        predominant = type;
-      }
-    });
-
-    return predominant;
-  }, [filteredLogs]);
-
-  const _handleSort = (field: SortField) => {
-    if (sortField === field) {
-      // Cycle through: desc -> asc -> null (original order)
-      if (sortDirection === "desc") {
-        setSortDirection("asc");
-      } else if (sortDirection === "asc") {
-        setSortDirection(null);
-      } else {
-        setSortDirection("desc");
-      }
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
+  const applyQuery = (q: string) => {
+    setDraft(q);
+    setQuery(q.trim());
   };
 
-  const _toggleRowExpansion = (logId: string) => {
-    setExpandedRows((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(logId)) {
-        newSet.delete(logId);
-      } else {
-        newSet.add(logId);
-      }
-      return newSet;
-    });
-  };
+  const onFilter = (field: string, value: string, negate: boolean) =>
+    applyQuery(withTerm(query, filterTerm(field, value, negate)));
 
-  const _getLevelBadgeVariant = (level: LogLevel) => {
-    switch (level) {
-      case "ERROR":
-        return "destructive";
-      case "WARN":
-        return "default";
-      case "INFO":
-        return "secondary";
-      case "DEBUG":
-        return "outline";
-      default:
-        return "secondary";
-    }
-  };
+  const fields = useMemo(() => {
+    const set = new Set(["level", "source", "message"]);
+    for (const l of logs.slice(0, 300))
+      for (const k of Object.keys(l.attrs)) set.add(k);
+    return [...set].sort();
+  }, [logs]);
 
-  const _handleLogout = async () => {
-    await signOut();
-    router.push("/login");
-  };
-
-  const _SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field || sortDirection === null) return null;
-    return sortDirection === "asc" ? (
-      <ChevronUp className="ml-1 h-4 w-4" />
-    ) : (
-      <ChevronDown className="ml-1 h-4 w-4" />
-    );
-  };
+  const multiSource = useMemo(
+    () => new Set(logs.map((l) => l.service)).size > 1,
+    [logs],
+  );
+  const rangeLabel = RANGES.find(([k]) => k === range)?.[0];
 
   return (
-    <>
-      {/* Service Selector Modal - Mandatory, cannot be closed without selecting */}
+    <div className="logs-view">
       <ServiceSelector
-        open={showServiceSelector}
-        onOpenChange={(open) => {
-          // Only allow closing if a service is selected
-          if (!open && currentService) {
-            setShowServiceSelector(false);
+        open={pickService}
+        onOpenChange={(o) => {
+          if (!o && service) setPickService(false);
+        }}
+        onServiceSelect={(id) => {
+          const s = services.find((x) => x.id === id);
+          if (s) {
+            setService(s);
+            setPickService(false);
           }
         }}
-        onServiceSelect={handleServiceSelect}
       />
 
-      {/* Filters Bar */}
-      <div className="border-b px-6 py-3">
-        <div className="flex items-center gap-3">
-          {/* Level Filters */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={
-                selectedLevels.includes("INFO") ? "secondary" : "outline"
-              }
-              size="sm"
-              onClick={() =>
-                setSelectedLevels((prev) =>
-                  prev.includes("INFO")
-                    ? prev.filter((l) => l !== "INFO")
-                    : [...prev, "INFO"],
-                )
-              }
-              className="gap-2"
-            >
-              <div className="h-2 w-2 rounded-full bg-blue-500" />
-              Info
-            </Button>
-            <Button
-              variant={
-                selectedLevels.includes("DEBUG") ? "secondary" : "outline"
-              }
-              size="sm"
-              onClick={() =>
-                setSelectedLevels((prev) =>
-                  prev.includes("DEBUG")
-                    ? prev.filter((l) => l !== "DEBUG")
-                    : [...prev, "DEBUG"],
-                )
-              }
-              className="gap-2"
-            >
-              <div className="h-2 w-2 rounded-full bg-green-500" />
-              Success
-            </Button>
-            <Button
-              variant={
-                selectedLevels.includes("WARN") ? "secondary" : "outline"
-              }
-              size="sm"
-              onClick={() =>
-                setSelectedLevels((prev) =>
-                  prev.includes("WARN")
-                    ? prev.filter((l) => l !== "WARN")
-                    : [...prev, "WARN"],
-                )
-              }
-              className="gap-2"
-            >
-              <div className="h-2 w-2 rounded-full bg-orange-500" />
-              Warning
-            </Button>
-            <Button
-              variant={
-                selectedLevels.includes("ERROR") ? "secondary" : "outline"
-              }
-              size="sm"
-              onClick={() =>
-                setSelectedLevels((prev) =>
-                  prev.includes("ERROR")
-                    ? prev.filter((l) => l !== "ERROR")
-                    : [...prev, "ERROR"],
-                )
-              }
-              className="gap-2"
-            >
-              <div className="h-2 w-2 rounded-full bg-red-500" />
-              Error
-            </Button>
-            <Button
-              variant={
-                selectedLevels.includes("DEBUG") ? "secondary" : "outline"
-              }
-              size="sm"
-              className="gap-2"
-              onClick={() =>
-                setSelectedLevels((prev) =>
-                  prev.includes("DEBUG")
-                    ? prev.filter((l) => l !== "DEBUG")
-                    : [...prev, "DEBUG"],
+      <header className="logs-head">
+        <div className="logs-head-top">
+          <label className="logs-service">
+            <span className="sr-only">Service</span>
+            <select
+              value={service?.id ?? ""}
+              onChange={(e) =>
+                setService(
+                  services.find((s) => s.id === e.target.value) ?? null,
                 )
               }
             >
-              Debug
-            </Button>
-          </div>
+              {!service && <option value="">Choose a service</option>}
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <div className="flex-1" />
+          <fieldset className="logs-range" aria-label="Time range">
+            {RANGES.map(([k]) => (
+              <label key={k} data-active={k === range || undefined}>
+                <input
+                  type="radio"
+                  name="range"
+                  value={k}
+                  checked={k === range}
+                  onChange={() => setRange(k)}
+                  className="sr-only"
+                />
+                {k}
+              </label>
+            ))}
+          </fieldset>
 
-          {/* Search with Autocomplete */}
-          <div className="relative w-80">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
-            <Input
-              ref={searchInputRef}
-              placeholder="Search logs, IDs, methods..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() =>
-                searchSuggestions.length > 0 && setShowSuggestions(true)
-              }
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              className="pl-9"
-            />
-            {showSuggestions && searchSuggestions.length > 0 && (
-              <div className="absolute top-full mt-1 w-full bg-popover border rounded-md shadow-lg z-50 max-h-60 overflow-auto">
-                {searchSuggestions.map((suggestion, index) => (
+          <button
+            type="button"
+            className="logs-live"
+            data-on={live || undefined}
+            onClick={() => setLive((v) => !v)}
+            aria-pressed={live}
+          >
+            <span className="logs-live-dot" aria-hidden />
+            {live ? "Live" : "Paused"}
+          </button>
+        </div>
+
+        <QueryBar
+          value={draft}
+          onChange={setDraft}
+          onSubmit={() => applyQuery(draft)}
+          fields={fields}
+          dirty={draft.trim() !== query}
+        />
+      </header>
+
+      <div className="logs-status" aria-live="polite">
+        {status === "loading" && <span>Searching…</span>}
+        {status === "ready" && (
+          <span>
+            {logs.length.toLocaleString()}
+            {logs.length >= PAGE && !live ? "+" : ""}{" "}
+            {logs.length === 1 ? "line" : "lines"} · last {rangeLabel}
+            {query && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  className="logs-link"
+                  onClick={() => applyQuery("")}
+                >
+                  Clear search
+                </button>
+              </>
+            )}
+          </span>
+        )}
+        {status === "error" && <span className="logs-error">{error}</span>}
+      </div>
+
+      <div className="logs-list">
+        {pending.length > 0 && (
+          <button type="button" className="logs-pending" onClick={showPending}>
+            {pending.length} new {pending.length === 1 ? "line" : "lines"} ↑
+          </button>
+        )}
+        {status === "ready" && logs.length === 0 ? (
+          <div className="logs-empty">
+            {query ? (
+              <>
+                <p>
+                  Nothing matches <code>{query}</code> in the last {rangeLabel}.
+                </p>
+                <div className="flex gap-3">
+                  {range !== "3d" && (
+                    <button
+                      type="button"
+                      className="logs-link"
+                      onClick={() => setRange("3d")}
+                    >
+                      Search the last 3 days
+                    </button>
+                  )}
                   <button
-                    key={`${suggestion.logId}-${index}`}
                     type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between text-sm"
-                    onClick={() => {
-                      setSearchQuery(suggestion.text);
-                      setShowSuggestions(false);
-                    }}
+                    className="logs-link"
+                    onClick={() => applyQuery("")}
                   >
-                    <span className="truncate">{suggestion.text}</span>
-                    <Badge variant="outline" className="ml-2 text-xs">
-                      {suggestion.column}
-                    </Badge>
+                    Clear search
                   </button>
-                ))}
-              </div>
+                </div>
+              </>
+            ) : (
+              <p>
+                No lines in the last {rangeLabel}.{" "}
+                {live
+                  ? "New ones appear here as they arrive."
+                  : "Turn on Live to follow new ones."}
+              </p>
             )}
           </div>
-
-          {/* Service Filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Services
-                {selectedServices.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">
-                    {selectedServices.length}
-                  </Badge>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0" align="end">
-              <Command>
-                <CommandInput placeholder="Search services..." />
-                <CommandList>
-                  <CommandEmpty>No services found.</CommandEmpty>
-                  <CommandGroup>
-                    {allServices.map((service) => (
-                      <CommandItem
-                        key={service}
-                        onSelect={() => {
-                          setSelectedServices((prev) =>
-                            prev.includes(service)
-                              ? prev.filter((s) => s !== service)
-                              : [...prev, service],
-                          );
-                        }}
-                      >
-                        <Checkbox
-                          checked={selectedServices.includes(service)}
-                          className="mr-2"
-                        />
-                        {service}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-
-          {/* Column Visibility */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Settings2 className="h-4 w-4" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onCloseAutoFocus={(e) => e.preventDefault()}
-            >
-              <DropdownMenuCheckboxItem
-                checked={visibleColumns.timestamp}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({ ...prev, timestamp: checked }))
+        ) : (
+          <Virtuoso
+            ref={list}
+            data={logs}
+            computeItemKey={(_, l) => l.key}
+            atTopStateChange={(top) => {
+              atTop.current = top;
+              if (top && pending.length > 0) showPending();
+            }}
+            itemContent={(_, l) => (
+              <LogLine
+                log={l}
+                open={open.has(l.key)}
+                showService={multiSource}
+                onFilter={onFilter}
+                onToggle={() =>
+                  setOpen((prev) => {
+                    const next = new Set(prev);
+                    if (!next.delete(l.key)) next.add(l.key);
+                    return next;
+                  })
                 }
-                onSelect={(e) => e.preventDefault()}
-              >
-                Timestamp
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={visibleColumns.level}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({ ...prev, level: checked }))
-                }
-                onSelect={(e) => e.preventDefault()}
-              >
-                Level
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={visibleColumns.source}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({ ...prev, source: checked }))
-                }
-                onSelect={(e) => e.preventDefault()}
-              >
-                Source
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={visibleColumns.filePath}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({ ...prev, filePath: checked }))
-                }
-                onSelect={(e) => e.preventDefault()}
-              >
-                Path
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={visibleColumns.message}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({ ...prev, message: checked }))
-                }
-                onSelect={(e) => e.preventDefault()}
-              >
-                Message
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Live Streaming Toggle */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={isLiveStreaming ? "default" : "outline"}
-                  size="icon"
-                  onClick={() => setIsLiveStreaming(!isLiveStreaming)}
-                >
-                  {isLiveStreaming ? (
-                    <Pause className="h-4 w-4" />
-                  ) : (
-                    <Play className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{isLiveStreaming ? "Pause" : "Resume"} live streaming</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Refresh */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setLogs([])}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Clear logs</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <Table>
-          <LogTableHeaders sourceType={predominantSourceType} />
-          <TableBody>
-            {filteredLogs.map((log) => (
-              <LogRow
-                key={log.id}
-                log={log}
-                isExpanded={expandedRows.has(log.id)}
-                onToggleExpand={() => {
-                  const newExpanded = new Set(expandedRows);
-                  if (newExpanded.has(log.id)) {
-                    newExpanded.delete(log.id);
-                  } else {
-                    newExpanded.add(log.id);
-                  }
-                  setExpandedRows(newExpanded);
-                }}
               />
-            ))}
-          </TableBody>
-        </Table>
+            )}
+          />
+        )}
       </div>
-    </>
+    </div>
   );
 }

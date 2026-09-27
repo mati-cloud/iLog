@@ -1,6 +1,6 @@
 "use client";
 
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Martian_Mono, Schibsted_Grotesk } from "next/font/google";
 import { usePathname } from "next/navigation";
 import "./globals.css";
 import { Footer } from "@/components/Footer";
@@ -9,9 +9,16 @@ import { Sidebar } from "@/components/Sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useSession } from "@/lib/auth-client";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const ui = Schibsted_Grotesk({
+  variable: "--font-ui",
   subsets: ["latin"],
+});
+
+// Only the query bar uses this; its wide, even glyphs make syntax legible.
+const query = Martian_Mono({
+  variable: "--font-query",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 const geistMono = Geist_Mono({
@@ -38,7 +45,7 @@ export default function RootLayout({
         <script src="/runtime-config.js" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${ui.variable} ${query.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <ThemeProvider
           attribute="class"
@@ -48,7 +55,7 @@ export default function RootLayout({
         >
           {showSidebar && <Sidebar />}
           <LayoutContent showSidebar={showSidebar}>
-            <main className="min-h-screen">{children}</main>
+            <main className="min-h-[calc(100dvh-57px)]">{children}</main>
             <Footer />
           </LayoutContent>
         </ThemeProvider>

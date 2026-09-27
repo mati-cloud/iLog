@@ -4,6 +4,7 @@ mod db;
 mod jwks;
 mod models;
 mod otel;
+mod query;
 mod services;
 mod streaming;
 mod tcp_server;
