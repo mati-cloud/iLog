@@ -15,48 +15,31 @@ Lightweight, modular log collector for iLog written in Rust.
 
 ## Installation
 
-### Quick Install (VPS/Server)
-
-Automated installation as systemd service:
+### Quick Install (systemd host)
 
 ```bash
-# Download and extract
-curl -L https://github.com/mati-cloud/ilog/releases/latest/download/ilog-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
-
-# Run installer (creates service, config, etc.)
-sudo ./install.sh
-
-# Edit config with your server details
-sudo nano /etc/ilog/config.toml
-
-# Start the service
-sudo systemctl start ilog-agent
-sudo systemctl enable ilog-agent
-
-# Check status
-sudo systemctl status ilog-agent
+curl -fsSL https://raw.githubusercontent.com/mati-cloud/iLog/main/ilog-agent/install.sh \
+  | sudo ILOG_TOKEN=agt_xxx ILOG_SERVER=ilog.example.com:8081 sh
 ```
 
-The installer will:
-- ✅ Install binary to `/usr/local/bin/ilog-agent`
-- ✅ Create config at `/etc/ilog/config.toml`
-- ✅ Set up systemd service with auto-restart
-- ✅ Configure security hardening and resource limits
+The installer:
+- Downloads `ilog-agent-linux-{amd64,arm64}` from the latest GitHub release and verifies it against `SHA256SUMS`
+- Installs it to `/usr/local/bin/ilog-agent`
+- Writes `/etc/ilog/config.toml` (server + token, mode 0600) and a starter `/etc/ilog/sources.yaml` (never overwritten)
+- Runs the agent as the unprivileged `ilog` user with only `CAP_DAC_READ_SEARCH` (read any log file)
+- Enables and starts `ilog-agent.service`
+
+Pin a release with `ILOG_VERSION=v1.4.0`. Re-run to upgrade or rotate the token.
+Choose what to ship by editing `/etc/ilog/sources.yaml`, then `sudo systemctl restart ilog-agent`.
 
 ### Manual Installation
 
-Download the latest release for your platform:
-
 ```bash
-# x86_64 (amd64)
-curl -L https://github.com/mati-cloud/ilog/releases/latest/download/ilog-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
-
-# ARM64 (aarch64)
-curl -L https://github.com/mati-cloud/ilog/releases/latest/download/ilog-agent-aarch64-unknown-linux-gnu.tar.gz | tar xz
-
-# Move to system path
-sudo mv ilog-agent /usr/local/bin/
-sudo chmod +x /usr/local/bin/ilog-agent
+ARCH=amd64  # or arm64
+curl -fLO https://github.com/mati-cloud/iLog/releases/latest/download/ilog-agent-linux-$ARCH
+curl -fLO https://github.com/mati-cloud/iLog/releases/latest/download/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+sudo install -m 0755 ilog-agent-linux-$ARCH /usr/local/bin/ilog-agent
 ```
 
 ### Build From Source
@@ -76,45 +59,21 @@ cargo build --release --features all
 
 ## Configuration
 
-### Option 1: Config File
+Two files, both read at startup:
 
-Create `/etc/ilog/config.toml`:
+- `/etc/ilog/config.toml` — where to ship and as whom (see `ilog.toml.example`):
 
-```toml
-[agent]
-server = "ilog.company.com:8080"
-token = "proj_abc123_xyz789"
-protocol = "tcp"  # "tcp" (default) or "http"
+  ```toml
+  [agent]
+  server = "ilog.example.com:8081"   # backend TCP ingest
+  token = "agt_<agent_id>_<secret>"  # from the dashboard
+  ```
 
-[sources.file]
-enabled = true
-paths = ["/var/log/nginx/*.log"]
+- `/etc/ilog/sources.yaml` — what to tail and how to parse it (`json`, `regex`, `cri`; see `config.example.yaml`).
 
-[sources.journald]
-enabled = true
-units = ["nginx.service"]
-```
+Override paths with `--config` / `--parser`. Any config key can also come from env with prefix `ILOG`: `ILOG_AGENT_TOKEN` → `agent.token`, `ILOG_AGENT_SERVER` → `agent.server`.
 
-### Protocol Options
-
-**TCP (Default)** - Raw TCP socket with encryption and compression:
-- ✅ ChaCha20-Poly1305 AEAD encryption
-- ✅ LZ4 compression (2-3x size reduction)
-- ✅ Persistent connection (no handshake overhead)
-- ✅ Sub-millisecond latency
-- ✅ Automatic reconnection with exponential backoff
-
-**HTTP** - Traditional HTTP/1.1 (requires `http` feature):
-- ✅ Firewall-friendly
-- ✅ Load balancer compatible
-- ❌ Higher latency (~5-15ms overhead per batch)
-
-### Option 2: Environment Variables
-
-```bash
-export ILOG_AGENT_SERVER="ilog.company.com:8080"
-export ILOG_AGENT_TOKEN="proj_abc123_xyz789"
-```
+Transport is TCP only: ChaCha20-Poly1305 AEAD, LZ4, one persistent connection, reconnect with exponential backoff.
 
 ## Usage
 
@@ -143,13 +102,11 @@ sudo journalctl -u ilog-agent -f
 ### Manual Execution
 
 ```bash
-# Use config file
-ilog-agent --config /etc/ilog/config.toml
+# Defaults to /etc/ilog/config.toml and /etc/ilog/sources.yaml
+ilog-agent --config ./config.toml --parser ./sources.yaml
 
-# Use environment variables
-ILOG_AGENT_SERVER=ilog.company.com:8080 \
-ILOG_AGENT_TOKEN=proj_xxx_yyy \
-ilog-agent
+# Token/server from env
+ILOG_AGENT_SERVER=ilog.example.com:8081 ILOG_AGENT_TOKEN=agt_xxx_yyy ilog-agent
 ```
 
 ## Uninstall
@@ -164,6 +121,7 @@ sudo systemctl disable ilog-agent
 sudo rm /etc/systemd/system/ilog-agent.service
 sudo rm /usr/local/bin/ilog-agent
 sudo rm -rf /etc/ilog
+sudo userdel ilog
 ```
 
 ## Build Sizes
